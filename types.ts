@@ -8,6 +8,8 @@ export interface User {
   dob?: string;
   gender?: string;
   email?: string;
+  location?: string;
+  lastNameChangeDate?: string; // ISO string
 }
 
 export type ReactionType = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry' | null;

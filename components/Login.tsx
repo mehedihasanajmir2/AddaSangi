@@ -120,30 +120,22 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
     setIsLoading(true);
     setErrorMsg('');
     
-    // 1. Password validation (min 7 chars)
+    // 1. Basic Field Validations
+    if (!firstName.trim() || !lastName.trim()) {
+      setErrorMsg('Please enter your first and last name.');
+      setIsLoading(false);
+      return;
+    }
+
     if (password.length < 7) {
       setErrorMsg('Password must be at least 7 characters long.');
       setIsLoading(false);
       return;
     }
 
-    // 2. Age validation (min 15 years)
     const age = calculateAge(parseInt(birthYear), parseInt(birthMonth), parseInt(birthDay));
     if (age < 15) {
       setErrorMsg('You must be at least 15 years old to create an account.');
-      setIsLoading(false);
-      return;
-    }
-
-    // 3. Email Uniqueness Check (Check profiles table first)
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle();
-
-    if (existingProfile) {
-      setErrorMsg('This email is already in use. Please use a different one or login.');
       setIsLoading(false);
       return;
     }
@@ -154,19 +146,35 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 2. Strict Uniqueness Check (Query profiles table first)
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (existingProfile) {
+      setErrorMsg('This email is already registered. Please use another one.');
+      setIsLoading(false);
+      return;
+    }
+
     const dobFormatted = `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`;
 
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
+    // 3. Supabase Sign Up
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: cleanEmail,
       password,
       options: {
         data: {
-          first_name: firstName,
-          last_name: lastName,
-          full_name: `${firstName} ${lastName}`,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          full_name: `${firstName.trim()} ${lastName.trim()}`,
           dob: dobFormatted,
           gender: gender,
-          email: email // Store email in metadata for profile sync
+          email: cleanEmail
         }
       }
     });
@@ -174,11 +182,19 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
     if (signUpError) { 
       setErrorMsg(signUpError.message); 
       setIsLoading(false); 
+      return;
     } 
-    else { 
-      setErrorMsg('Check your email for the confirmation link!'); 
-      setIsLoading(false); 
+
+    // 4. Secondary Check: Identities array
+    if (data?.user && data.user.identities && data.user.identities.length === 0) {
+      setErrorMsg('This email is already registered. Please use a different email or log in.');
+      setIsLoading(false);
+      return;
     }
+
+    // Success
+    setErrorMsg('Success! Check your email for the confirmation link.'); 
+    setIsLoading(false);
   };
 
   const inputClasses = "w-full px-4 py-3 bg-white text-gray-900 border border-gray-300 rounded-md outline-none focus:border-[#b71c1c] focus:ring-1 focus:ring-[#b71c1c] placeholder-gray-500 transition-all font-medium";
@@ -201,8 +217,8 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
 
         <div className="w-full bg-white/95 backdrop-blur-md rounded-xl shadow-2xl p-6 border border-gray-100 ring-1 ring-black/5">
           {errorMsg && (
-            <div className={`p-4 rounded-lg mb-6 text-sm font-bold border flex items-center gap-3 ${errorMsg.includes('Check your email') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-              <i className={`fa-solid ${errorMsg.includes('Check your email') ? 'fa-circle-check text-lg' : 'fa-circle-exclamation text-lg'}`}></i>
+            <div className={`p-4 rounded-lg mb-6 text-sm font-bold border flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${errorMsg.includes('Success') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+              <i className={`fa-solid ${errorMsg.includes('Success') ? 'fa-circle-check text-lg' : 'fa-circle-exclamation text-lg'}`}></i>
               <span className="flex-1">{errorMsg}</span>
             </div>
           )}
@@ -232,22 +248,21 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
                 </h2>
               </div>
               
-              {/* Name boxes at the TOP - Requested */}
+              {/* Name boxes at the TOP */}
               <div className="grid grid-cols-2 gap-3">
-                <input type="text" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClasses} required />
-                <input type="text" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClasses} required />
+                <input type="text" placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClasses} required />
+                <input type="text" placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClasses} required />
               </div>
 
               <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClasses} required />
               
               <div className="flex flex-col gap-1">
-                <input type="password" placeholder="New Password (min. 7 chars)" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required />
-                <p className="text-[10px] text-gray-400 px-1 font-bold">Minimum 7 characters for security.</p>
+                <input type="password" placeholder="New Password (min 7 chars)" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required />
               </div>
 
               {/* Birthday Selection */}
               <div className="mt-1">
-                <label className="text-[11px] font-black text-gray-500 mb-1.5 block uppercase tracking-widest">Birthday (Must be 15+ years)</label>
+                <label className="text-[11px] font-black text-gray-500 mb-1.5 block uppercase tracking-widest">Birthday (Minimum 15 years)</label>
                 <div className="flex gap-2">
                   <select value={birthDay} onChange={(e) => setBirthDay(e.target.value)} className={selectClasses}>
                     {daysInMonth.map(d => <option key={d} value={d}>{d}</option>)}
@@ -279,7 +294,7 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
               </button>
               
               <button type="button" onClick={() => { setIsSignup(false); setErrorMsg(''); }} className="text-blue-600 font-bold text-sm hover:underline mt-2 text-center">
-                Already have an account?
+                Already have an account? Log In
               </button>
             </form>
           )}
