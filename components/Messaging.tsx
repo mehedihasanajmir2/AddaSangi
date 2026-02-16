@@ -16,55 +16,51 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ১. ইনবক্স লিস্ট লোড করা
   const fetchInbox = async () => {
-    const { data: msgs } = await supabase
-      .from('messages')
-      .select('sender_id, receiver_id, created_at')
-      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
-      .order('created_at', { ascending: false });
+    try {
+      const { data: msgs, error } = await supabase
+        .from('messages')
+        .select('sender_id, receiver_id, created_at')
+        .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+        .order('created_at', { ascending: false });
 
-    if (msgs) {
-      const uids = Array.from(new Set(msgs.flatMap(m => [m.sender_id, m.receiver_id])))
-        .filter(id => id !== currentUser.id);
-      
-      if (uids.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('*').in('id', uids);
-        if (profiles) {
-          setInboxUsers(profiles.map(p => ({
-            id: p.id,
-            username: p.full_name || 'User',
-            avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`
-          })));
+      if (error) throw error;
+
+      if (msgs) {
+        const uids = Array.from(new Set(msgs.flatMap(m => [m.sender_id, m.receiver_id])))
+          .filter(id => id !== currentUser.id);
+        
+        if (uids.length > 0) {
+          const { data: profiles } = await supabase.from('profiles').select('*').in('id', uids);
+          if (profiles) {
+            setInboxUsers(profiles.map(p => ({
+              id: p.id,
+              username: p.full_name || 'User',
+              avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`
+            })));
+          }
         }
       }
+    } catch (err: any) {
+      console.error("Inbox Fetch Error:", err.message);
     }
   };
 
-  // ২. রিয়েল-টাইম লিসেনার সেটআপ (গ্লোবাল লিসেনার - ইনবক্স এবং চ্যাট সবার জন্য)
   useEffect(() => {
     fetchInbox();
 
-    // এটি আপনার আইডির ওপর হওয়া সমস্ত মেসেজ চেঞ্জ ট্র্যাক করবে
     const globalChannel = supabase.channel('realtime_messaging_all')
       .on(
         'postgres_changes', 
         { event: 'INSERT', table: 'messages' }, 
         (payload) => {
           const newMsg = payload.new;
-          
-          // যদি মেসেজটি আমার জন্য হয় অথবা আমি পাঠিয়ে থাকি
           if (newMsg.receiver_id === currentUser.id || newMsg.sender_id === currentUser.id) {
-            // ইনবক্স লিস্ট আপডেট করুন
             fetchInbox();
-
-            // যদি এটি কারেন্ট ওপেন চ্যাটের মেসেজ হয়, তবে মেসেজ লিস্টে পুশ করুন
             if (
-              (activeChat && newMsg.sender_id === activeChat.id) || 
-              (activeChat && newMsg.sender_id === currentUser.id)
+              (activeChat && (newMsg.sender_id === activeChat.id || newMsg.receiver_id === activeChat.id))
             ) {
               setMessages(prev => {
-                // ডুপ্লিকেট মেসেজ চেক (আইডি দিয়ে)
                 const exists = prev.find(m => m.id === newMsg.id);
                 if (exists) return prev;
                 return [...prev, newMsg];
@@ -80,33 +76,32 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
     };
   }, [currentUser.id, activeChat]);
 
-  // ৩. স্পেসিফিক ইউজারের সাথে চ্যাট হিস্ট্রি লোড
   useEffect(() => {
     if (!activeChat) return;
 
     const fetchMessages = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`)
         .order('created_at', { ascending: true });
-      if (data) setMessages(data);
+      
+      if (error) {
+        console.error("Fetch Messages Error:", error.message);
+      } else if (data) {
+        setMessages(data);
+      }
     };
 
     fetchMessages();
   }, [activeChat, currentUser.id]);
 
-  // ৪. অটো স্ক্রল লজিক
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // ৫. মেসেজ পাঠানো (Optimistic UI লজিক সহ)
   const sendMessage = async () => {
     if (!msgInput.trim() || !activeChat || isSending) return;
 
@@ -115,7 +110,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
     setMsgInput('');
     setIsSending(true);
 
-    // অপ্টিমিস্টিক আপডেট: ডাটাবেসে যাওয়ার আগেই স্ক্রিনে মেসেজ যোগ করুন
     const tempMsg = {
       id: tempId,
       sender_id: currentUser.id,
@@ -130,23 +124,22 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
       sender_id: currentUser.id,
       receiver_id: activeChat.id,
       content: content
-    }).select().single();
+    }).select(); // Removed .single() to avoid RLS issues during return
 
     setIsSending(false);
 
     if (error) {
-      // এরর হলে টেম্পোরারি মেসেজটি রিমুভ করুন
       setMessages(prev => prev.filter(m => m.id !== tempId));
-      alert("Message not sent. Check connection.");
-    } else if (data) {
-      // আসল ডাটা দিয়ে টেম্পোরারি মেসেজ রিপ্লেস করুন
-      setMessages(prev => prev.map(m => m.id === tempId ? data : m));
+      // আসল এরর মেসেজটি অ্যালার্টে দেখানো হচ্ছে
+      alert(`মেসেজ পাঠানো যায়নি: ${error.message}\n\nপরামর্শ: নিশ্চিত করুন আপনার সুপাবেস ডাটাবেসে 'messages' টেবিলটি তৈরি আছে এবং RLS পলিসি সেট করা আছে।`);
+      console.error("Send Error Details:", error);
+    } else if (data && data[0]) {
+      setMessages(prev => prev.map(m => m.id === tempId ? data[0] : m));
     }
   };
 
   return (
     <div className="flex h-[calc(100vh-56px)] md:h-[calc(100vh-100px)] bg-white md:rounded-xl md:shadow-xl md:border overflow-hidden">
-      {/* Inbox / Contacts List */}
       <div className={`w-full md:w-80 border-r flex flex-col bg-gray-50 ${activeChat ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b bg-white flex justify-between items-center">
           <h2 className="font-black text-2xl text-gray-900 tracking-tighter">Messenger</h2>
@@ -182,7 +175,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
         </div>
       </div>
 
-      {/* Actual Chat Window */}
       <div className={`flex-1 flex flex-col bg-white ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
         {activeChat ? (
           <>
