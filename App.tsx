@@ -27,15 +27,7 @@ const App: React.FC = () => {
 
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
-    
-    console.log("Fetching profile for:", userAuth.email);
-    
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userAuth.id)
-      .maybeSingle();
-    
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
     if (profile) {
       setCurrentUser({
         id: profile.id,
@@ -47,23 +39,13 @@ const App: React.FC = () => {
         location: profile.location
       });
     } else {
-      // যদি প্রোফাইল না থাকে, তবে একটি ডিফল্ট প্রোফাইল তৈরি করুন
-      console.log("Profile missing. Creating a fallback profile...");
       const fallbackUser: User = {
         id: userAuth.id,
         username: userAuth.user_metadata?.full_name || userAuth.email.split('@')[0],
         avatar: `https://picsum.photos/seed/${userAuth.id}/200`,
         email: userAuth.email
       };
-      
-      // ডাটাবেসে সেভ করার চেষ্টা করুন
-      await supabase.from('profiles').upsert({
-        id: userAuth.id,
-        full_name: fallbackUser.username,
-        email: userAuth.email,
-        avatar_url: fallbackUser.avatar
-      });
-      
+      await supabase.from('profiles').upsert({ id: userAuth.id, full_name: fallbackUser.username, email: userAuth.email, avatar_url: fallbackUser.avatar });
       setCurrentUser(fallbackUser);
     }
   }, []);
@@ -74,14 +56,10 @@ const App: React.FC = () => {
         const { data: { session: s } } = await supabase.auth.getSession();
         setSession(s);
         if (s) await fetchProfile(s.user);
-      } catch (err) {
-        console.error("Init Error:", err);
-      } finally {
-        setLoadingSession(false);
-      }
+      } catch (err) { console.error("Init Error:", err); }
+      finally { setLoadingSession(false); }
     };
     init();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       if (s) fetchProfile(s.user);
@@ -110,19 +88,9 @@ const App: React.FC = () => {
 
   const handleAddFriend = async (targetId: string) => {
     if (!currentUser) return;
-    const { error } = await supabase.from('friendships').upsert({
-      sender_id: currentUser.id,
-      receiver_id: targetId,
-      status: 'accepted'
-    });
-    
-    await supabase.from('friendships').upsert({
-      sender_id: targetId,
-      receiver_id: currentUser.id,
-      status: 'accepted'
-    });
-
-    if (!error) alert("Friend Added! Check your contact list.");
+    await supabase.from('friendships').upsert({ sender_id: currentUser.id, receiver_id: targetId, status: 'accepted' });
+    await supabase.from('friendships').upsert({ sender_id: targetId, receiver_id: currentUser.id, status: 'accepted' });
+    alert("Friend Added!");
   };
 
   const loadFeed = async () => {
@@ -151,7 +119,6 @@ const App: React.FC = () => {
     setActiveTab(AppTab.MESSAGES);
   };
 
-  // লোডিং স্টেটে সাদা স্ক্রিন এড়াতে
   if (loadingSession) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -163,13 +130,11 @@ const App: React.FC = () => {
 
   if (!session) return <Login onLogin={() => {}} />;
 
-  // যদি সেশন থাকে কিন্তু প্রোফাইল সিঙ্ক হচ্ছে
   if (!currentUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
         <div className="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full animate-spin mb-4"></div>
         <p className="text-gray-600 font-bold">আপনার প্রোফাইল সিঙ্ক করা হচ্ছে...</p>
-        <button onClick={() => window.location.reload()} className="mt-4 text-red-600 font-bold underline">কাজ না করলে রিলোড দিন</button>
       </div>
     );
   }
@@ -192,6 +157,7 @@ const App: React.FC = () => {
             />
           </div>
         </div>
+        
         <nav className="hidden lg:flex flex-1 justify-center gap-4 h-full">
            {[ { id: AppTab.FEED, icon: 'fa-house' }, { id: AppTab.VIDEOS, icon: 'fa-video' }, { id: AppTab.SEARCH, icon: 'fa-users' } ].map(t => (
              <button key={t.id} onClick={() => setActiveTab(t.id)} className={`px-8 h-full border-b-4 transition-all ${activeTab === t.id ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500'}`}>
@@ -199,7 +165,16 @@ const App: React.FC = () => {
              </button>
            ))}
         </nav>
+
         <div className="flex-1 flex justify-end gap-2">
+          {/* Mobile Search Button */}
+          <button 
+            onClick={() => setActiveTab(AppTab.SEARCH)} 
+            className={`md:hidden w-10 h-10 rounded-full flex items-center justify-center ${activeTab === AppTab.SEARCH ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}
+          >
+            <i className="fa-solid fa-magnifying-glass"></i>
+          </button>
+          
           <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-10 h-10 rounded-full flex items-center justify-center ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}>
             <i className="fa-solid fa-bolt"></i>
           </button>
@@ -214,7 +189,7 @@ const App: React.FC = () => {
         <main className={`flex-1 min-w-0 ${activeTab === AppTab.MESSAGES ? 'p-0 md:px-2 md:py-4' : 'px-2 py-4'} overflow-x-hidden`}>
           <div className={`${activeTab === AppTab.MESSAGES ? 'max-w-full' : 'max-w-[700px]'} mx-auto h-full`}>
             {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={loadFeed} onRefresh={loadFeed} onPostCreate={loadFeed} onPostDelete={loadFeed} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
-            {activeTab === AppTab.SEARCH && <SearchResults results={searchResults} query={searchQuery} onUserSelect={openChat} onAddFriend={handleAddFriend} />}
+            {activeTab === AppTab.SEARCH && <SearchResults results={searchResults} query={searchQuery} onQueryChange={setSearchQuery} onUserSelect={openChat} onAddFriend={handleAddFriend} />}
             {activeTab === AppTab.MESSAGES && <Messaging currentUser={currentUser} targetUser={selectedChatUser} />}
             {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} currentUser={currentUser} onPostDelete={loadFeed} onLike={loadFeed} />}
             {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
