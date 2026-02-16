@@ -11,75 +11,75 @@ interface SearchResultsProps {
 const SearchResults: React.FC<SearchResultsProps> = ({ results, query, onUserSelect }) => {
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-500 px-4 md:px-0">
-      <div className="bg-white p-4 shadow-sm md:rounded-xl">
-        <h2 className="text-xl font-bold text-gray-900">
-          {query ? `Search results for "${query}"` : 'Friends you may know'}
+      <div className="bg-white p-4 shadow-sm md:rounded-xl border border-red-50">
+        <h2 className="text-xl font-black text-gray-900">
+          {query ? (
+             <>Searching for "<span className="text-red-600">{query}</span>"</>
+          ) : 'People You May Know'}
         </h2>
-        <p className="text-sm text-gray-500 mt-1">Found {results.length} friends</p>
+        <p className="text-sm text-gray-500 font-bold mt-1">Found {results.length} people matching your request</p>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         {results.length > 0 ? (
           results.map((user) => (
             <div 
               key={user.id} 
-              className="bg-white p-4 shadow-sm md:rounded-xl flex items-center justify-between hover:bg-gray-50 transition-colors group"
+              className="bg-white p-4 shadow-sm md:rounded-xl flex flex-col sm:flex-row items-center justify-between hover:border-red-100 border border-transparent transition-all group gap-4"
             >
-              <div className="flex items-center gap-4">
-                <div className="relative cursor-pointer" onClick={() => onUserSelect(user)}>
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                <div className="relative cursor-pointer shrink-0" onClick={() => onUserSelect(user)}>
                   <img 
                     src={user.avatar} 
-                    className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover border-2 border-white shadow-sm hover:opacity-90" 
+                    className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover border-4 border-gray-50 shadow-md group-hover:scale-105 transition-transform" 
                     alt={user.username} 
                   />
-                  <div className="absolute bottom-1 right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                  <div className="absolute bottom-1 right-1 w-5 h-5 bg-green-500 rounded-full border-4 border-white"></div>
                 </div>
-                <div className="flex flex-col">
+                <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1">
                     <h3 
-                      className="text-lg font-bold text-gray-900 group-hover:underline cursor-pointer"
+                      className="text-lg font-black text-gray-900 group-hover:text-red-600 cursor-pointer truncate"
                       onClick={() => onUserSelect(user)}
                     >
                       {user.username}
                     </h3>
                     {user.isVerified && <i className="fa-solid fa-circle-check text-blue-500 text-xs"></i>}
                   </div>
-                  <p className="text-sm text-gray-600 line-clamp-1">{user.bio}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    <div className="flex -space-x-1">
-                      {[1, 2, 3].map(i => (
-                        <img 
-                          key={i} 
-                          src={`https://picsum.photos/seed/mutual-${user.id}-${i}/50`} 
-                          className="w-5 h-5 rounded-full border border-white" 
-                          alt="mutual" 
-                        />
-                      ))}
-                    </div>
-                    <span className="text-xs text-gray-500 ml-1">12 mutual friends</span>
+                  <p className="text-sm text-gray-500 font-medium line-clamp-1">{user.bio || 'AddaSangi Member'}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[10px] font-black uppercase text-gray-400 bg-gray-50 px-2 py-0.5 rounded border tracking-wider">
+                      {user.location || 'Dhaka'}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button className="bg-[#1b5e20] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-[#144d18] transition-colors shadow-sm">
-                  <i className="fa-solid fa-user-plus"></i> Add Friend
+              <div className="flex flex-row sm:flex-col lg:flex-row gap-2 w-full sm:w-auto">
+                <button className="flex-1 sm:w-32 bg-[#1b5e20] text-white px-4 py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 hover:bg-[#144d18] transition-all shadow-md active:scale-95">
+                  <i className="fa-solid fa-user-plus"></i> Add
                 </button>
-                <button className="bg-gray-200 text-gray-900 px-4 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-300 transition-colors">
-                  <i className="fa-solid fa-message"></i> Message
+                <button 
+                  onClick={() => onUserSelect(user)}
+                  className="flex-1 sm:w-32 bg-gray-100 text-gray-900 px-4 py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 hover:bg-gray-200 transition-all active:scale-95"
+                >
+                  <i className="fa-solid fa-message text-red-600"></i> Chat
                 </button>
               </div>
             </div>
           ))
         ) : (
-          <div className="bg-white p-12 shadow-sm md:rounded-xl text-center flex flex-col items-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <i className="fa-solid fa-magnifying-glass text-3xl text-gray-300"></i>
+          <div className="bg-white p-16 shadow-sm md:rounded-xl text-center flex flex-col items-center border border-dashed border-gray-200">
+            <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center mb-6">
+              <i className="fa-solid fa-user-slash text-4xl text-red-200"></i>
             </div>
-            <h3 className="text-xl font-bold text-gray-900">No results found</h3>
-            <p className="text-gray-500 mt-2">Try searching for a different name or checking your spelling.</p>
-            <button className="mt-6 text-[#b71c1c] font-bold hover:underline">
-              View friends you may know instead
+            <h3 className="text-2xl font-black text-gray-900">No Sangis Found</h3>
+            <p className="text-gray-500 mt-2 font-medium max-w-xs mx-auto">We couldn't find anyone with that name. Try searching by their full name or email address.</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="mt-8 bg-gray-900 text-white px-8 py-3 rounded-full font-black hover:bg-black transition-all shadow-lg"
+            >
+              Refresh Results
             </button>
           </div>
         )}

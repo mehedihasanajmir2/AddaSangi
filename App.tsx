@@ -41,19 +41,12 @@ const App: React.FC = () => {
           id: profile.id,
           username: profile.full_name || 'User',
           avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
-          coverUrl: profile.cover_url,
+          coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
           bio: profile.bio,
           email: profile.email || '',
           location: profile.location,
           gender: profile.gender,
           dob: profile.dob
-        });
-      } else {
-        // Fallback if profile row doesn't exist yet but user is authenticated
-        setCurrentUser({
-          id: uid,
-          username: 'New Sangi',
-          avatar: `https://picsum.photos/seed/${uid}/200`,
         });
       }
     } catch (err) {
@@ -91,25 +84,27 @@ const App: React.FC = () => {
       setSearchResults([]);
       return;
     }
-    const { data } = await supabase
+    // Search by full_name or email for better results
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .ilike('full_name', `%${query}%`)
-      .limit(10);
+      .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
+      .limit(20);
 
     if (data) {
       setSearchResults(data.map(p => ({
         id: p.id,
-        username: p.full_name,
+        username: p.full_name || 'User',
         avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
         bio: p.bio,
-        location: p.location
+        location: p.location,
+        isVerified: !!p.is_verified
       })));
     }
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => handleSearch(searchQuery), 300);
+    const timer = setTimeout(() => handleSearch(searchQuery), 400);
     return () => clearTimeout(timer);
   }, [searchQuery, handleSearch]);
 
@@ -184,7 +179,13 @@ const App: React.FC = () => {
   if (loadingSession) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white">
       <img src={LOGO_URL} className="w-20 h-20 animate-pulse rounded-2xl mb-4" alt="logo" />
-      <p className="text-[#b71c1c] font-black animate-pulse">AddaSangi Loading...</p>
+      <div className="flex flex-col items-center gap-2">
+         <p className="text-[#b71c1c] font-black text-lg animate-bounce">AddaSangi</p>
+         <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-red-600 animate-[loading_1.5s_infinite_linear]"></div>
+         </div>
+      </div>
+      <style>{`@keyframes loading { 0% { width: 0; } 100% { width: 100%; } }`}</style>
     </div>
   );
 
@@ -193,7 +194,7 @@ const App: React.FC = () => {
   if (!currentUser) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white">
       <img src={LOGO_URL} className="w-16 h-16 animate-spin rounded-2xl mb-4" alt="logo" />
-      <p className="text-gray-500 font-bold">Synchronizing Profile...</p>
+      <p className="text-gray-500 font-bold">Connecting Profile...</p>
     </div>
   );
 
@@ -211,8 +212,8 @@ const App: React.FC = () => {
             <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             <input 
               type="text" 
-              placeholder="Search AddaSangi" 
-              className="w-full bg-gray-100 rounded-full py-2 pl-10 pr-4 outline-none focus:bg-white focus:ring-1 focus:ring-gray-200 text-sm text-gray-900"
+              placeholder="Search Friends by Name" 
+              className="w-full bg-gray-100 rounded-full py-2 pl-10 pr-4 outline-none focus:bg-white focus:ring-1 focus:ring-red-200 text-sm text-gray-900 font-medium"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -234,10 +235,10 @@ const App: React.FC = () => {
           <button onClick={() => setActiveTab(AppTab.SEARCH)} className={`w-9 h-9 md:hidden rounded-full flex items-center justify-center ${activeTab === AppTab.SEARCH ? 'bg-red-50 text-[#b71c1c]' : 'bg-gray-100'}`}>
             <i className="fa-solid fa-magnifying-glass text-sm"></i>
           </button>
-          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-200">
+          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-9 h-9 rounded-full flex items-center justify-center ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-[#b71c1c]' : 'bg-gray-100 text-gray-700'}`}>
             <i className="fa-solid fa-comment"></i>
           </button>
-          <button onClick={() => setActiveTab(AppTab.NOTIFICATIONS)} className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-200">
+          <button onClick={() => setActiveTab(AppTab.NOTIFICATIONS)} className={`w-9 h-9 rounded-full flex items-center justify-center ${activeTab === AppTab.NOTIFICATIONS ? 'bg-red-50 text-[#b71c1c]' : 'bg-gray-100 text-gray-700'}`}>
             <i className="fa-solid fa-bell"></i>
           </button>
           <div className="flex items-center gap-2 ml-1 cursor-pointer bg-gray-50 p-1 rounded-full border hover:bg-gray-100" onClick={() => setActiveTab(AppTab.PROFILE)}>
@@ -252,12 +253,12 @@ const App: React.FC = () => {
         <main className="flex-1 min-w-0 px-2 py-4">
           <div className={`${activeTab === AppTab.PROFILE ? 'max-w-none' : 'max-w-[680px]'} mx-auto`}>
             {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={handleLike} onRefresh={loadFeed} onPostCreate={handlePostCreate} onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
-            {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} onUpdateProfile={async (u) => { await supabase.from('profiles').upsert({ id: currentUser.id, ...u }); fetchProfile(currentUser.id); }} onPostCreate={handlePostCreate} onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} onLike={handleLike} currentUser={currentUser} />}
+            {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} onUpdateProfile={async (u) => { await supabase.from('profiles').update(u).eq('id', currentUser.id); fetchProfile(currentUser.id); }} onPostCreate={handlePostCreate} onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} onLike={handleLike} currentUser={currentUser} />}
             {activeTab === AppTab.VIDEOS && <VideoFeed posts={posts} loading={loading} onLike={handleLike} currentUser={currentUser} />}
             {activeTab === AppTab.SEARCH && (
                <div className="flex flex-col gap-4">
                  <div className="md:hidden bg-white p-3 rounded-xl shadow-sm border mb-2">
-                    <input type="text" placeholder="Search AddaSangi" className="w-full bg-gray-100 rounded-full py-2 px-4 outline-none text-gray-900" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                    <input type="text" placeholder="Search Friends by Name" className="w-full bg-gray-100 rounded-full py-2 px-4 outline-none text-gray-900 font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                  </div>
                  <SearchResults results={searchResults} query={searchQuery} onUserSelect={startChatWith} />
                </div>

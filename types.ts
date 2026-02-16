@@ -13,6 +13,9 @@ export interface User {
   lastNameChangeDate?: string;
   // Added full_name to match Supabase schema and fix Profile update type error
   full_name?: string;
+  // Adding these to match Supabase schema expectations in Profile update
+  avatar_url?: string;
+  cover_url?: string;
 }
 
 export type ReactionType = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry' | null;
