@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -27,18 +26,38 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
       if (error) throw error;
 
       if (msgs) {
-        const uids = Array.from(new Set(msgs.flatMap(m => [m.sender_id, m.receiver_id])))
+        // Fix: Explicitly cast participants to string to avoid 'unknown' type issues during set construction and filtering
+        const uids = Array.from(new Set((msgs as any[]).flatMap(m => [m.sender_id as string, m.receiver_id as string])))
           .filter(id => id !== currentUser.id);
         
         if (uids.length > 0) {
-          const { data: profiles } = await supabase.from('profiles').select('*').in('id', uids);
-          if (profiles) {
-            setInboxUsers(profiles.map(p => ({
-              id: p.id,
-              username: p.full_name || 'User',
-              avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`
-            })));
+          // মক ইউজার এবং রিয়েল ইউজার ফিল্টার করা
+          const realUids = uids.filter(id => id.length > 20); // UUIDs are long
+          const mockUids = uids.filter(id => id.length <= 20);
+
+          let combinedProfiles: User[] = [];
+
+          if (realUids.length > 0) {
+            const { data: profiles } = await supabase.from('profiles').select('*').in('id', realUids);
+            if (profiles) {
+              combinedProfiles = profiles.map(p => ({
+                id: p.id,
+                username: p.full_name || 'User',
+                avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`
+              }));
+            }
           }
+
+          // মক ইউজারদের জন্য ডামি প্রোফাইল
+          mockUids.forEach(id => {
+            combinedProfiles.push({
+              id,
+              username: id.includes('_') ? id : 'AI Friend',
+              avatar: `https://picsum.photos/seed/${id}/200`
+            });
+          });
+
+          setInboxUsers(combinedProfiles);
         }
       }
     } catch (err: any) {
@@ -48,58 +67,37 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
 
   useEffect(() => {
     fetchInbox();
-
     const globalChannel = supabase.channel('realtime_messaging_all')
-      .on(
-        'postgres_changes', 
-        { event: 'INSERT', table: 'messages' }, 
-        (payload) => {
-          const newMsg = payload.new;
-          if (newMsg.receiver_id === currentUser.id || newMsg.sender_id === currentUser.id) {
-            fetchInbox();
-            if (
-              (activeChat && (newMsg.sender_id === activeChat.id || newMsg.receiver_id === activeChat.id))
-            ) {
-              setMessages(prev => {
-                const exists = prev.find(m => m.id === newMsg.id);
-                if (exists) return prev;
-                return [...prev, newMsg];
-              });
-            }
+      .on('postgres_changes', { event: 'INSERT', table: 'messages' }, (payload) => {
+        const newMsg = payload.new;
+        if (newMsg.receiver_id === currentUser.id || newMsg.sender_id === currentUser.id) {
+          fetchInbox();
+          if (activeChat && (newMsg.sender_id === activeChat.id || newMsg.receiver_id === activeChat.id)) {
+            setMessages(prev => {
+              if (prev.find(m => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
           }
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(globalChannel);
-    };
+      }).subscribe();
+    return () => { supabase.removeChannel(globalChannel); };
   }, [currentUser.id, activeChat]);
 
   useEffect(() => {
     if (!activeChat) return;
-
     const fetchMessages = async () => {
       const { data, error } = await supabase
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`)
         .order('created_at', { ascending: true });
-      
-      if (error) {
-        console.error("Fetch Messages Error:", error.message);
-      } else if (data) {
-        setMessages(data);
-      }
+      if (data) setMessages(data);
     };
-
     fetchMessages();
   }, [activeChat, currentUser.id]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
   const sendMessage = async () => {
@@ -124,15 +122,14 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
       sender_id: currentUser.id,
       receiver_id: activeChat.id,
       content: content
-    }).select(); // Removed .single() to avoid RLS issues during return
+    }).select();
 
     setIsSending(false);
 
     if (error) {
       setMessages(prev => prev.filter(m => m.id !== tempId));
-      // আসল এরর মেসেজটি অ্যালার্টে দেখানো হচ্ছে
-      alert(`মেসেজ পাঠানো যায়নি: ${error.message}\n\nপরামর্শ: নিশ্চিত করুন আপনার সুপাবেস ডাটাবেসে 'messages' টেবিলটি তৈরি আছে এবং RLS পলিসি সেট করা আছে।`);
-      console.error("Send Error Details:", error);
+      console.error("Database Error:", error);
+      alert(`সমস্যা হয়েছে: ${error.message}\n\nসমাধান: নিচের দেওয়া SQL কোডটি আপনার Supabase SQL Editor-এ রান করুন যাতে ডাটাবেস মক ইউজারদের গ্রহণ করতে পারে।`);
     } else if (data && data[0]) {
       setMessages(prev => prev.map(m => m.id === tempId ? data[0] : m));
     }
@@ -160,7 +157,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
                </div>
                <div className="text-left flex-1 min-w-0">
                   <h4 className="font-bold text-gray-900 truncate">{user.username}</h4>
-                  <p className="text-xs text-gray-400 truncate font-medium">New interaction available</p>
+                  <p className="text-xs text-gray-400 truncate font-medium">New interaction</p>
                </div>
             </button>
           ))}
@@ -195,19 +192,18 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
               <div className="flex gap-4 text-red-600 mr-2">
                  <button className="hover:bg-red-50 p-2 rounded-full transition-colors"><i className="fa-solid fa-phone"></i></button>
                  <button className="hover:bg-red-50 p-2 rounded-full transition-colors"><i className="fa-solid fa-video"></i></button>
-                 <button className="hover:bg-red-50 p-2 rounded-full transition-colors"><i className="fa-solid fa-circle-info"></i></button>
               </div>
             </header>
 
             <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto bg-[#f0f2f5] flex flex-col gap-3">
-              <div className="flex flex-col items-center mb-8 mt-4 animate-in fade-in zoom-in duration-500">
+              <div className="flex flex-col items-center mb-8 mt-4">
                  <img src={activeChat.avatar} className="w-24 h-24 rounded-full border-4 border-white shadow-lg mb-3" alt="" />
                  <h4 className="font-black text-2xl text-gray-900">{activeChat.username}</h4>
                  <p className="text-xs text-gray-500 font-bold bg-white px-3 py-1 rounded-full shadow-sm">Friends on AddaSangi</p>
               </div>
               
               {messages.map((m) => {
-                const isMe = m.sender_id === currentUser.id;
+                const isMe = String(m.sender_id) === String(currentUser.id);
                 return (
                   <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-1 duration-300`}>
                     <div className={`max-w-[80%] p-3 rounded-2xl text-sm font-bold shadow-sm ${
@@ -226,24 +222,18 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
             </div>
 
             <div className="p-4 border-t bg-white flex items-center gap-3 pb-8 md:pb-4">
-              <div className="flex gap-3 text-red-600 text-lg">
-                 <button className="hover:bg-red-50 p-2 rounded-full"><i className="fa-solid fa-camera"></i></button>
-                 <button className="hover:bg-red-50 p-2 rounded-full"><i className="fa-solid fa-image"></i></button>
-              </div>
-              <div className="flex-1 relative">
-                <input 
-                  type="text" 
-                  placeholder="Aa" 
-                  className="w-full bg-gray-100 rounded-full px-5 py-2.5 outline-none font-bold text-sm focus:bg-gray-200 transition-all border border-transparent focus:border-red-100"
-                  value={msgInput}
-                  onChange={(e) => setMsgInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                />
-              </div>
+              <input 
+                type="text" 
+                placeholder="Aa" 
+                className="flex-1 bg-gray-100 rounded-full px-5 py-2.5 outline-none font-bold text-sm focus:bg-gray-200 transition-all"
+                value={msgInput}
+                onChange={(e) => setMsgInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              />
               <button 
                 onClick={sendMessage} 
                 disabled={!msgInput.trim() || isSending}
-                className={`transition-all ${msgInput.trim() ? 'text-red-600 scale-125' : 'text-gray-300 cursor-not-allowed'}`}
+                className={`transition-all ${msgInput.trim() ? 'text-red-600' : 'text-gray-300'}`}
               >
                 <i className="fa-solid fa-paper-plane text-xl"></i>
               </button>
@@ -252,10 +242,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-inner mb-4">
-               <i className="fa-solid fa-bolt text-5xl text-red-500 animate-pulse"></i>
+               <i className="fa-solid fa-bolt text-5xl text-red-500"></i>
             </div>
-            <h3 className="text-xl font-black text-gray-900">AddaSangi Messaging</h3>
-            <p className="font-bold text-sm max-w-[250px] text-center mt-2">Connect with your friends in real-time. Fast, secure, and personal.</p>
+            <h3 className="text-xl font-black text-gray-900">AddaSangi Messenger</h3>
+            <p className="font-bold text-sm max-w-[250px] text-center mt-2">আপনার বন্ধুদের সাথে যুক্ত হতে চ্যাট শুরু করুন।</p>
           </div>
         )}
       </div>
