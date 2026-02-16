@@ -27,26 +27,30 @@ const App: React.FC = () => {
 
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
-    if (profile) {
-      setCurrentUser({
-        id: profile.id,
-        username: profile.full_name || userAuth.user_metadata?.full_name || 'AddaSangi User',
-        avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
-        coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
-        bio: profile.bio,
-        email: profile.email || userAuth.email,
-        location: profile.location
-      });
-    } else {
-      const fallbackUser: User = {
-        id: userAuth.id,
-        username: userAuth.user_metadata?.full_name || userAuth.email.split('@')[0],
-        avatar: `https://picsum.photos/seed/${userAuth.id}/200`,
-        email: userAuth.email
-      };
-      await supabase.from('profiles').upsert({ id: userAuth.id, full_name: fallbackUser.username, email: userAuth.email, avatar_url: fallbackUser.avatar });
-      setCurrentUser(fallbackUser);
+    try {
+      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
+      if (profile) {
+        setCurrentUser({
+          id: profile.id,
+          username: profile.full_name || userAuth.user_metadata?.full_name || 'AddaSangi User',
+          avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
+          coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
+          bio: profile.bio,
+          email: profile.email || userAuth.email,
+          location: profile.location
+        });
+      } else {
+        const fallbackUser: User = {
+          id: userAuth.id,
+          username: userAuth.user_metadata?.full_name || userAuth.email.split('@')[0],
+          avatar: `https://picsum.photos/seed/${userAuth.id}/200`,
+          email: userAuth.email
+        };
+        await supabase.from('profiles').upsert({ id: userAuth.id, full_name: fallbackUser.username, email: userAuth.email, avatar_url: fallbackUser.avatar });
+        setCurrentUser(fallbackUser);
+      }
+    } catch (err) {
+      console.error("Profile Fetch Error:", err);
     }
   }, []);
 
@@ -70,14 +74,18 @@ const App: React.FC = () => {
 
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
-    const { data } = await supabase.from('profiles').select('*').ilike('full_name', `%${query}%`).limit(10);
-    if (data) {
-      setSearchResults(data.map(p => ({
-        id: p.id,
-        username: p.full_name || 'User',
-        avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
-        isVerified: !!p.is_verified
-      })));
+    try {
+      const { data } = await supabase.from('profiles').select('*').ilike('full_name', `%${query}%`).limit(10);
+      if (data) {
+        setSearchResults(data.map(p => ({
+          id: p.id,
+          username: p.full_name || 'User',
+          avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
+          isVerified: !!p.is_verified
+        })));
+      }
+    } catch (err) {
+      console.error("Search Error:", err);
     }
   }, []);
 
@@ -88,26 +96,37 @@ const App: React.FC = () => {
 
   const handleAddFriend = async (targetId: string) => {
     if (!currentUser) return;
-    await supabase.from('friendships').upsert({ sender_id: currentUser.id, receiver_id: targetId, status: 'accepted' });
-    await supabase.from('friendships').upsert({ sender_id: targetId, receiver_id: currentUser.id, status: 'accepted' });
-    alert("Friend Added!");
+    try {
+      const { error } = await supabase.from('friendships').upsert([
+        { sender_id: currentUser.id, receiver_id: targetId, status: 'accepted' },
+        { sender_id: targetId, receiver_id: currentUser.id, status: 'accepted' }
+      ]);
+      if (error) throw error;
+      alert("বন্ধু হিসেবে যোগ করা হয়েছে!");
+    } catch (err: any) {
+      alert("সমস্যা হয়েছে: " + err.message + "\n\nনিশ্চিত করুন আপনার ডাটাবেসে 'friendships' টেবিলটি আছে।");
+    }
   };
 
   const loadFeed = async () => {
     if (!session) return;
     setLoading(true);
-    const { data: dbPosts } = await supabase.from('posts').select(`*, profiles(*), reactions(*), comments(*, profiles(full_name))`).order('created_at', { ascending: false });
-    if (dbPosts) {
-      const formatted: Post[] = dbPosts.map((p: any) => ({
-        id: p.id,
-        user: { id: p.profiles?.id, username: p.profiles?.full_name, avatar: p.profiles?.avatar_url },
-        caption: p.caption,
-        imageUrl: p.image_url,
-        likes: p.reactions?.length || 0,
-        comments: p.comments?.map((c: any) => ({ id: c.id, username: c.profiles?.full_name, text: c.content, timestamp: 'Now' })) || [],
-        timestamp: new Date(p.created_at).toLocaleDateString()
-      }));
-      setPosts(formatted);
+    try {
+      const { data: dbPosts } = await supabase.from('posts').select(`*, profiles(*), reactions(*), comments(*, profiles(full_name))`).order('created_at', { ascending: false });
+      if (dbPosts) {
+        const formatted: Post[] = dbPosts.map((p: any) => ({
+          id: p.id,
+          user: { id: p.profiles?.id, username: p.profiles?.full_name, avatar: p.profiles?.avatar_url },
+          caption: p.caption,
+          imageUrl: p.image_url,
+          likes: p.reactions?.length || 0,
+          comments: p.comments?.map((c: any) => ({ id: c.id, username: c.profiles?.full_name, text: c.content, timestamp: 'Now' })) || [],
+          timestamp: new Date(p.created_at).toLocaleDateString()
+        }));
+        setPosts(formatted);
+      }
+    } catch (err) {
+      console.error("Feed Load Error:", err);
     }
     setLoading(false);
   };
@@ -167,7 +186,6 @@ const App: React.FC = () => {
         </nav>
 
         <div className="flex-1 flex justify-end gap-2">
-          {/* Mobile Search Button */}
           <button 
             onClick={() => setActiveTab(AppTab.SEARCH)} 
             className={`md:hidden w-10 h-10 rounded-full flex items-center justify-center ${activeTab === AppTab.SEARCH ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}
