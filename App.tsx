@@ -29,6 +29,9 @@ const App: React.FC = () => {
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [isCalling, setIsCalling] = useState(false);
   
+  // মেসেজ টোস্ট স্টেট (কল চলাকালীন মেসেজ দেখার জন্য)
+  const [activeNotification, setActiveNotification] = useState<{senderName: string, text: string} | null>(null);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -39,14 +42,14 @@ const App: React.FC = () => {
   const playNotificationSound = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => console.log("Audio play blocked"));
+      audioRef.current.play().catch(e => console.log("Audio play blocked: interaction needed"));
     }
   }, []);
 
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
     try {
-      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
       if (profile) {
         setCurrentUser({
           id: profile.id,
@@ -79,17 +82,30 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
-  // গ্লোবাল মেসেজ নোটিফিকেশন - এটি কল চালু থাকলেও বাজবে
+  // গ্লোবাল মেসেজ নোটিফিকেশন - এটি কল চালু থাকলেও বাজবে (যেমন কম্পিউটারে হয়)
   useEffect(() => {
     if (!currentUser) return;
-    const channel = supabase.channel('app_global_messages')
-      .on('postgres_changes', { event: 'INSERT', table: 'messages' }, payload => {
+    const channel = supabase.channel('app_global_realtime')
+      .on('postgres_changes', { event: 'INSERT', table: 'messages' }, async (payload) => {
         const msg = payload.new;
         if (String(msg.receiver_id) === String(currentUser.id) && String(msg.sender_id) !== String(currentUser.id)) {
+          // ১. সাউন্ড বাজানো (যেকোনো মোডে)
           playNotificationSound();
+          
+          // ২. মেসেজ কাউন্ট আপডেট
           if (activeTab !== AppTab.MESSAGES) {
             setUnreadMessagesCount(prev => prev + 1);
           }
+
+          // ৩. পপ-আপ টোস্ট দেখানো (যদি কলিং বা ফিডে থাকে)
+          const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', msg.sender_id).maybeSingle();
+          setActiveNotification({
+            senderName: sender?.full_name || 'কেউ একজন',
+            text: msg.content
+          });
+          
+          // ৫ সেকেন্ড পর অটো রিমুভ
+          setTimeout(() => setActiveNotification(null), 5000);
         }
       })
       .subscribe();
@@ -154,7 +170,26 @@ const App: React.FC = () => {
   if (!currentUser) return null;
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans">
+    <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans relative">
+      {/* গ্লোবাল মেসেজ টোস্ট (জ-ইনডেক্স কলিং এর ওপরে) */}
+      {activeNotification && (
+        <div 
+          onClick={() => { setActiveTab(AppTab.MESSAGES); setActiveNotification(null); }}
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] bg-white border-2 border-red-500 shadow-2xl p-4 rounded-2xl flex items-center gap-4 w-[90%] max-w-[400px] animate-in slide-in-from-top-10 duration-500 cursor-pointer hover:scale-105 transition-transform"
+        >
+          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+             <i className="fa-solid fa-message text-red-600"></i>
+          </div>
+          <div className="flex-1 min-w-0">
+             <h4 className="font-black text-gray-900 text-sm truncate">{activeNotification.senderName}</h4>
+             <p className="text-xs text-gray-600 truncate">{activeNotification.text}</p>
+          </div>
+          <button onClick={(e) => { e.stopPropagation(); setActiveNotification(null); }} className="p-2 text-gray-400">
+             <i className="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      )}
+
       <header className="fixed top-0 inset-x-0 h-14 bg-white border-b z-50 flex items-center px-4 shadow-sm">
         <div className="flex items-center gap-2 flex-1">
           <div className="cursor-pointer" onClick={() => setActiveTab(AppTab.FEED)}>
@@ -173,7 +208,6 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex-1 flex justify-end gap-2 items-center">
-          {/* Call AI Button */}
           <button 
             onClick={() => setIsCalling(true)}
             className="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 text-green-600 border border-green-100 animate-pulse hover:animate-none transition-all"
