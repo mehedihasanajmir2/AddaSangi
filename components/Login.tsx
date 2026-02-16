@@ -100,7 +100,7 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
     setErrorMsg('');
     
     if (!firstName.trim() || !lastName.trim()) {
-      setErrorMsg('Please enter your full name.');
+      setErrorMsg('দয়া করে আপনার পুরো নাম লিখুন।');
       setIsLoading(false);
       return;
     }
@@ -123,12 +123,17 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
     });
 
     if (signUpError) { 
-      setErrorMsg(signUpError.message); 
+      // Rate limit এরর হ্যান্ডেল করা
+      if (signUpError.message.toLowerCase().includes('rate limit')) {
+        setErrorMsg('খুব বেশি বার চেষ্টা করা হয়েছে। নিরাপত্তার স্বার্থে সুপাবেস সাময়িকভাবে রেজিস্ট্রেশন বন্ধ রেখেছে। দয়া করে ৫-১০ মিনিট পর আবার চেষ্টা করুন।');
+      } else {
+        setErrorMsg(signUpError.message); 
+      }
       setIsLoading(false); 
       return;
     } 
 
-    // 2. ইউজার তৈরি হলে প্রোফাইল টেবিলে তথ্য ইনসার্ট করুন (সার্চে পাওয়ার জন্য এটি বাধ্যতামূলক)
+    // 2. প্রোফাইল তৈরি
     if (data.user) {
       const { error: profileError } = await supabase
         .from('profiles')
@@ -148,7 +153,7 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
       }
     }
 
-    setErrorMsg('Success! You can now log in.'); 
+    setErrorMsg('সফল হয়েছে! এখন আপনি লগইন করতে পারবেন।'); 
     setIsSignup(false);
     setIsLoading(false);
   };
@@ -169,40 +174,40 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
             <span className="text-[#b71c1c]">Adda</span>
             <span className="text-[#1b5e20]">Sangi</span>
           </h1>
-          <p className="text-gray-500 font-bold">Bangladesh's own community platform</p>
+          <p className="text-gray-500 font-bold">আড্ডাসঙ্গী - আপনার নিজস্ব কমিউনিটি</p>
         </div>
 
         <div className="w-full bg-white rounded-2xl shadow-2xl p-6 border border-gray-100">
           {errorMsg && (
-            <div className={`p-4 rounded-xl mb-6 text-sm font-bold border flex items-center gap-3 ${errorMsg.includes('Success') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-              <i className={`fa-solid ${errorMsg.includes('Success') ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
+            <div className={`p-4 rounded-xl mb-6 text-sm font-bold border flex items-start gap-3 ${errorMsg.includes('সফল') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+              <i className={`fa-solid mt-1 ${errorMsg.includes('সফল') ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
               <span className="flex-1">{errorMsg}</span>
             </div>
           )}
 
           {!isSignup ? (
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
-              <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClasses} required />
-              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required />
+              <input type="email" placeholder="ইমেইল অ্যাড্রেস" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClasses} required />
+              <input type="password" placeholder="পাসওয়ার্ড" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required />
               <button type="submit" disabled={isLoading} className="w-full bg-[#b71c1c] text-white py-3.5 rounded-xl font-black text-xl transition-all shadow-lg active:scale-[0.98] disabled:opacity-70 hover:bg-[#a01818]">
-                {isLoading ? 'Wait...' : 'Log In'}
+                {isLoading ? 'অপেক্ষা করুন...' : 'লগইন করুন'}
               </button>
               <div className="border-t border-gray-100 my-4"></div>
-              <button type="button" onClick={() => setIsSignup(true)} className="bg-[#1b5e20] hover:bg-[#144d18] text-white py-3 px-8 rounded-xl font-bold text-lg mx-auto">
-                Create Account
+              <button type="button" onClick={() => { setIsSignup(true); setErrorMsg(''); }} className="bg-[#1b5e20] hover:bg-[#144d18] text-white py-3 px-8 rounded-xl font-bold text-lg mx-auto">
+                নতুন অ্যাকাউন্ট খুলুন
               </button>
             </form>
           ) : (
             <form onSubmit={handleSignup} className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-3">
-                <input type="text" placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClasses} required />
-                <input type="text" placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClasses} required />
+                <input type="text" placeholder="নামের প্রথম অংশ" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClasses} required />
+                <input type="text" placeholder="নামের শেষ অংশ" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClasses} required />
               </div>
-              <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClasses} required />
-              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required />
+              <input type="email" placeholder="ইমেইল" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClasses} required />
+              <input type="password" placeholder="নতুন পাসওয়ার্ড" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClasses} required />
               
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Birthday</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">জন্ম তারিখ</label>
                 <div className="flex gap-2">
                   <select value={birthDay} onChange={(e) => setBirthDay(e.target.value)} className={selectClasses}>
                     {daysInMonth.map(d => <option key={d} value={d}>{d}</option>)}
@@ -220,17 +225,17 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
                 {['Female', 'Male'].map((g) => (
                   <label key={g} className={`flex items-center justify-center p-3 border rounded-xl cursor-pointer font-bold ${gender === g ? 'bg-red-50 border-red-200 text-red-600' : 'bg-gray-50 border-gray-100'}`}>
                     <input type="radio" name="gender" value={g} checked={gender === g} onChange={(e) => setGender(e.target.value)} className="hidden" />
-                    {g}
+                    {g === 'Male' ? 'পুরুষ' : 'মহিলা'}
                   </label>
                 ))}
               </div>
               
-              <button type="submit" disabled={isLoading} className="w-full bg-[#1b5e20] text-white py-3.5 rounded-xl font-black text-xl mt-2 shadow-lg">
-                {isLoading ? 'Processing...' : 'Register Now'}
+              <button type="submit" disabled={isLoading} className="w-full bg-[#1b5e20] text-white py-3.5 rounded-xl font-black text-xl mt-2 shadow-lg hover:bg-[#144d18] transition-colors">
+                {isLoading ? 'প্রসেসিং হচ্ছে...' : 'রেজিস্ট্রেশন করুন'}
               </button>
               
-              <button type="button" onClick={() => setIsSignup(false)} className="text-[#b71c1c] font-bold text-sm text-center mt-2">
-                Already have an account? Log In
+              <button type="button" onClick={() => { setIsSignup(false); setErrorMsg(''); }} className="text-[#b71c1c] font-bold text-sm text-center mt-2">
+                আগে থেকেই অ্যাকাউন্ট আছে? লগইন করুন
               </button>
             </form>
           )}
