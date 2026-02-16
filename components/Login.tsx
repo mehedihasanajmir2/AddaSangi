@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 
@@ -109,7 +108,6 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
     const dobFormatted = `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`;
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
-    // 1. Supabase Sign Up
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
@@ -123,9 +121,8 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
     });
 
     if (signUpError) { 
-      // Rate limit এরর হ্যান্ডেল করা
       if (signUpError.message.toLowerCase().includes('rate limit')) {
-        setErrorMsg('খুব বেশি বার চেষ্টা করা হয়েছে। নিরাপত্তার স্বার্থে সুপাবেস সাময়িকভাবে রেজিস্ট্রেশন বন্ধ রেখেছে। দয়া করে ৫-১০ মিনিট পর আবার চেষ্টা করুন।');
+        setErrorMsg('সুপাবেস সিকিউরিটি এলার্ট: খুব বেশি বার সাইন-আপ করার চেষ্টা করা হয়েছে। এটি ঠিক করতে আপনার Supabase Dashboard > Authentication > Rate Limits থেকে লিমিট বাড়িয়ে দিন। অথবা ৫ মিনিট পর আবার চেষ্টা করুন।');
       } else {
         setErrorMsg(signUpError.message); 
       }
@@ -133,27 +130,20 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     } 
 
-    // 2. প্রোফাইল তৈরি
     if (data.user) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: data.user.id,
-          full_name: fullName,
-          email: cleanEmail,
-          avatar_url: `https://picsum.photos/seed/${data.user.id}/200`,
-          cover_url: `https://picsum.photos/seed/cover-${data.user.id}/1200/400`,
-          dob: dobFormatted,
-          gender: gender,
-          bio: "Hey there! I'm using AddaSangi."
-        });
-      
-      if (profileError) {
-        console.error("Profile creation error:", profileError.message);
-      }
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        full_name: fullName,
+        email: cleanEmail,
+        avatar_url: `https://picsum.photos/seed/${data.user.id}/200`,
+        cover_url: `https://picsum.photos/seed/cover-${data.user.id}/1200/400`,
+        dob: dobFormatted,
+        gender: gender,
+        bio: "Hey there! I'm using AddaSangi."
+      });
     }
 
-    setErrorMsg('সফল হয়েছে! এখন আপনি লগইন করতে পারবেন।'); 
+    setErrorMsg('সফল হয়েছে! এখন লগইন করুন।'); 
     setIsSignup(false);
     setIsLoading(false);
   };
@@ -179,7 +169,7 @@ const Login: React.FC<AuthProps> = ({ onLogin }) => {
 
         <div className="w-full bg-white rounded-2xl shadow-2xl p-6 border border-gray-100">
           {errorMsg && (
-            <div className={`p-4 rounded-xl mb-6 text-sm font-bold border flex items-start gap-3 ${errorMsg.includes('সফল') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+            <div className={`p-4 rounded-xl mb-6 text-xs font-bold border flex items-start gap-3 ${errorMsg.includes('সফল') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
               <i className={`fa-solid mt-1 ${errorMsg.includes('সফল') ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
               <span className="flex-1">{errorMsg}</span>
             </div>
