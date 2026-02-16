@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { supabase } from '../services/supabaseClient';
 
+interface MessagePreview extends User {
+  lastMessage?: string;
+  lastMessageTime?: string;
+  isMe?: boolean;
+}
+
 interface MessagingProps {
   currentUser: User;
   targetUser?: User | null;
@@ -11,34 +17,55 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
   const [activeChat, setActiveChat] = useState<User | null>(targetUser || null);
   const [messages, setMessages] = useState<any[]>([]);
   const [msgInput, setMsgInput] = useState('');
-  const [inboxUsers, setInboxUsers] = useState<User[]>([]);
+  const [inboxUsers, setInboxUsers] = useState<MessagePreview[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'online' | 'error'>('connecting');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ইনবক্স লিস্ট লোড করা
+  // ইনবক্স লিস্ট এবং শেষ মেসেজ লোড করা
   const fetchInbox = async () => {
     try {
+      // সব মেসেজ আনা হচ্ছে যেখানে বর্তমান ইউজার যুক্ত
       const { data: msgs, error } = await supabase
         .from('messages')
-        .select('sender_id, receiver_id, created_at')
+        .select('*')
         .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       if (msgs) {
-        const uids = Array.from(new Set((msgs as any[]).flatMap(m => [String(m.sender_id), String(m.receiver_id)])))
-          .filter(id => id !== currentUser.id);
+        const contactMap = new Map<string, any>();
+        
+        msgs.forEach((m: any) => {
+          const otherId = String(m.sender_id) === String(currentUser.id) ? String(m.receiver_id) : String(m.sender_id);
+          if (!contactMap.has(otherId)) {
+            contactMap.set(otherId, {
+              lastMessage: m.content,
+              lastMessageTime: m.created_at,
+              isMe: String(m.sender_id) === String(currentUser.id)
+            });
+          }
+        });
+
+        const uids = Array.from(contactMap.keys());
         
         if (uids.length > 0) {
           const { data: profiles } = await supabase.from('profiles').select('*').in('id', uids);
           if (profiles) {
-            setInboxUsers(profiles.map(p => ({
-              id: p.id,
-              username: p.full_name || 'User',
-              avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`
-            })));
+            const formattedInbox = profiles.map(p => {
+              const meta = contactMap.get(String(p.id));
+              return {
+                id: p.id,
+                username: p.full_name || 'User',
+                avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
+                lastMessage: meta.lastMessage,
+                lastMessageTime: meta.lastMessageTime,
+                isMe: meta.isMe
+              };
+            }).sort((a, b) => new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime());
+            
+            setInboxUsers(formattedInbox);
           }
         }
       }
@@ -47,11 +74,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
     }
   };
 
-  // রিয়েল-টাইম সাবস্ক্রিপশন
   useEffect(() => {
     fetchInbox();
     
-    // মেসেজ টেবিলের জন্য রিয়েল টাইম লিসেনার
     const channel = supabase.channel('global_chat_channel')
       .on('postgres_changes', 
         { event: 'INSERT', table: 'messages' }, 
@@ -61,11 +86,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
           const senderId = String(newMsg.sender_id);
           const receiverId = String(newMsg.receiver_id);
 
-          // চেক করা হচ্ছে মেসেজটি আমার কি না
           if (senderId === myId || receiverId === myId) {
-            fetchInbox(); // ইনবক্স রিফ্রেশ
-
-            // যদি একটি চ্যাট ওপেন থাকে এবং মেসেজটি সেই ইউজারের হয়
+            fetchInbox();
             if (activeChat) {
               const activeId = String(activeChat.id);
               if (senderId === activeId || receiverId === activeId) {
@@ -88,7 +110,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
     };
   }, [currentUser.id, activeChat?.id]);
 
-  // চ্যাট হিস্টোরি লোড করা
   useEffect(() => {
     if (!activeChat) return;
     const fetchMessages = async () => {
@@ -102,21 +123,28 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
     fetchMessages();
   }, [activeChat?.id, currentUser.id]);
 
-  // অটো স্ক্রল ডাউন
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = (now.getTime() - date.getTime()) / 1000;
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff/60)}m`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h`;
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
   const sendMessage = async () => {
     if (!msgInput.trim() || !activeChat || isSending) return;
-
     const content = msgInput;
     setMsgInput('');
     setIsSending(true);
 
-    // অপ্টিমিস্টিক আপডেট (সাথে সাথে স্ক্রিনে দেখাবে)
     const tempMsg = {
       id: 'temp-' + Date.now(),
       sender_id: currentUser.id,
@@ -134,7 +162,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
     }).select();
 
     setIsSending(false);
-
     if (error) {
       setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
       alert("মেসেজ পাঠানো যায়নি!");
@@ -145,7 +172,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
 
   return (
     <div className="flex h-[calc(100vh-56px)] md:h-[calc(100vh-100px)] bg-white md:rounded-xl md:shadow-xl md:border overflow-hidden">
-      {/* Sidebar */}
+      {/* Sidebar - Inbox List */}
       <div className={`w-full md:w-80 border-r flex flex-col bg-gray-50 ${activeChat ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b bg-white flex justify-between items-center">
           <h2 className="font-black text-2xl text-gray-900">Chats</h2>
@@ -156,18 +183,37 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
         </div>
         <div className="flex-1 overflow-y-auto">
           {inboxUsers.map(user => (
-            <button key={user.id} onClick={() => setActiveChat(user)} className={`w-full flex items-center gap-3 p-4 hover:bg-white transition-all border-l-4 ${activeChat?.id === user.id ? 'bg-white border-red-600' : 'border-transparent'}`}>
-               <img src={user.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" alt="" />
+            <button 
+              key={user.id} 
+              onClick={() => setActiveChat(user)} 
+              className={`w-full flex items-center gap-3 p-4 hover:bg-white transition-all border-l-4 ${activeChat?.id === user.id ? 'bg-white border-red-600' : 'border-transparent'}`}
+            >
+               <div className="relative shrink-0">
+                 <img src={user.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" alt="" />
+                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white"></div>
+               </div>
                <div className="text-left flex-1 min-w-0">
-                  <h4 className="font-bold text-gray-900 truncate">{user.username}</h4>
-                  <p className="text-xs text-gray-400 truncate">Tap to chat live</p>
+                  <div className="flex justify-between items-baseline gap-2">
+                    <h4 className="font-bold text-gray-900 truncate">{user.username}</h4>
+                    {user.lastMessageTime && (
+                      <span className="text-[10px] text-gray-400 font-bold whitespace-nowrap">{formatTime(user.lastMessageTime)}</span>
+                    )}
+                  </div>
+                  <p className={`text-xs truncate ${!user.isMe ? 'font-black text-gray-900' : 'text-gray-500'}`}>
+                    {user.isMe ? `You: ${user.lastMessage}` : user.lastMessage}
+                  </p>
                </div>
             </button>
           ))}
+          {inboxUsers.length === 0 && (
+            <div className="p-8 text-center text-gray-400">
+              <p className="text-sm font-bold">কোন চ্যাট নেই। বন্ধু খুঁজুন!</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Chat Area */}
+      {/* Main Chat Area */}
       <div className={`flex-1 flex flex-col bg-white ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
         {activeChat ? (
           <>
@@ -189,6 +235,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
                   <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] p-3 rounded-2xl text-sm font-bold shadow-sm ${isMe ? 'bg-red-600 text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border'}`}>
                       {m.content}
+                      <div className={`text-[8px] mt-1 text-right ${isMe ? 'text-red-100' : 'text-gray-400'}`}>
+                        {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
                   </div>
                 );
@@ -198,8 +247,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
             <div className="p-4 border-t bg-white flex items-center gap-3 pb-8 md:pb-4">
               <input 
                 type="text" 
-                placeholder="Type something..." 
-                className="flex-1 bg-gray-100 rounded-full px-5 py-2.5 outline-none font-bold text-sm focus:ring-2 focus:ring-red-100"
+                placeholder="Aa" 
+                className="flex-1 bg-gray-100 rounded-full px-5 py-2.5 outline-none font-bold text-sm focus:bg-gray-200"
                 value={msgInput}
                 onChange={(e) => setMsgInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
@@ -213,7 +262,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50 text-center p-6">
             <i className="fa-solid fa-bolt-lightning text-6xl text-red-500 opacity-20 mb-4 animate-bounce"></i>
             <h3 className="text-xl font-black text-gray-900">AddaSangi Live</h3>
-            <p className="font-bold text-sm text-gray-500 mt-1">Select a friend to experience Facebook-like instant chat.</p>
+            <p className="font-bold text-sm text-gray-500 mt-1">কারো সাথে আড্ডা শুরু করতে তাকে সিলেক্ট করুন।</p>
           </div>
         )}
       </div>
