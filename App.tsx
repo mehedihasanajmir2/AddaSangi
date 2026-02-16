@@ -37,6 +37,7 @@ const MOCK_STORIES: Story[] = Array.from({ length: 6 }).map((_, i) => ({
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
+  const [loadingSession, setLoadingSession] = useState(true); // New loading state
   const [currentUser, setCurrentUser] = useState<User>(DEFAULT_USER);
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.FEED);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -45,18 +46,28 @@ const App: React.FC = () => {
   const [viewingUser, setViewingUser] = useState<User>(DEFAULT_USER);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Check current session on mount
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
-      if (session) fetchAndSetUser(session);
-    });
+      if (session) {
+        await fetchAndSetUser(session);
+      }
+      setLoadingSession(false);
+    };
 
+    checkSession();
+
+    // Listen for auth changes (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchAndSetUser(session);
-      else {
+      if (session) {
+        fetchAndSetUser(session);
+      } else {
         setCurrentUser(DEFAULT_USER);
         setViewingUser(DEFAULT_USER);
       }
+      setLoadingSession(false);
     });
 
     return () => subscription.unsubscribe();
@@ -73,11 +84,11 @@ const App: React.FC = () => {
       username: metadata.full_name || fallbackUsername,
       avatar: metadata.avatar_url || `https://picsum.photos/seed/${session.user.id}/200`,
       coverUrl: metadata.cover_url || undefined,
-      bio: 'AddaSangi Member 🇧🇩',
+      bio: metadata.bio || 'AddaSangi Member 🇧🇩',
       email: email,
       dob: metadata.dob,
       gender: metadata.gender,
-      location: 'Dhaka, Bangladesh'
+      location: metadata.location || 'Dhaka, Bangladesh'
     };
     
     setCurrentUser(tempUser);
@@ -112,18 +123,16 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (session) {
+    if (session && posts.length === 0) {
       loadFeed();
     }
-  }, [session]);
+  }, [session, posts.length]);
 
   const loadFeed = async () => {
     setLoading(true);
     try {
-      // 1. Fetch AI generated fun posts
       const aiPosts = await generateFeed();
       
-      // 2. Fetch real user posts from Supabase
       const { data: dbPosts, error } = await supabase
         .from('posts')
         .select(`
@@ -157,7 +166,6 @@ const App: React.FC = () => {
         }));
       }
 
-      // Merge real posts on top of AI posts
       setPosts([...formattedDbPosts, ...aiPosts]);
     } catch (err) {
       console.error("Feed error:", err);
@@ -181,7 +189,6 @@ const App: React.FC = () => {
   const handlePostCreate = async (caption: string) => {
     const tempImageUrl = `https://picsum.photos/seed/post-${Date.now()}/800/800`;
     
-    // Optimistic Update UI
     const newPost: Post = {
       id: `temp-${Date.now()}`,
       user: currentUser,
@@ -194,21 +201,17 @@ const App: React.FC = () => {
     };
     setPosts([newPost, ...posts]);
 
-    // Save to Database Forever
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('posts')
         .insert({
           user_id: currentUser.id,
           caption: caption,
           image_url: tempImageUrl,
           likes: 0
-        })
-        .select()
-        .single();
+        });
 
       if (error) throw error;
-      // Refresh feed to get real ID
       loadFeed();
     } catch (err) {
       console.error("Error saving post permanently:", err);
@@ -216,9 +219,7 @@ const App: React.FC = () => {
   };
 
   const handleDeletePost = async (postId: string) => {
-    // Only allow if it's not a mock post (id starts with 'user-' or 'temp-' usually)
-    if (postId.includes('user-')) {
-      // It's a mock post, just remove from UI
+    if (postId.includes('user-') || postId.includes('temp-')) {
       setPosts(prev => prev.filter(p => p.id !== postId));
       return;
     }
@@ -228,7 +229,7 @@ const App: React.FC = () => {
         .from('posts')
         .delete()
         .eq('id', postId)
-        .eq('user_id', currentUser.id); // Security: only owner can delete
+        .eq('user_id', currentUser.id);
 
       if (!error) {
         setPosts(prev => prev.filter(p => p.id !== postId));
@@ -278,6 +279,21 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
     setSession(null);
   };
+
+  // Splash/Loading Screen
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen bg-[#f0f2f5] flex flex-col items-center justify-center">
+        <div className="w-20 h-20 bg-white rounded-3xl shadow-xl flex items-center justify-center mb-4 p-2 animate-pulse">
+          <img src={LOGO_URL} alt="AddaSangi" className="w-full h-full object-contain" />
+        </div>
+        <h1 className="text-3xl font-black tracking-tighter animate-pulse">
+          <span className="text-[#b71c1c]">Adda</span>
+          <span className="text-[#1b5e20]">Sangi</span>
+        </h1>
+      </div>
+    );
+  }
 
   if (!session) {
     return <Login onLogin={() => {}} />;
