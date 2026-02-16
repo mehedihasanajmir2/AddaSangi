@@ -27,8 +27,13 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
+  const [showRefreshButton, setShowRefreshButton] = useState(false);
 
-  const fetchProfile = useCallback(async (uid: string) => {
+  // স্মার্ট প্রোফাইল ফেচিং: ডাটাবেসে না থাকলেও সেশন থেকে ডেটা নিয়ে অ্যাপ চালু করবে
+  const fetchProfile = useCallback(async (userAuth: any) => {
+    if (!userAuth) return;
+    const uid = userAuth.id;
+    
     try {
       const { data: profile, error } = await supabase
         .from('profiles')
@@ -39,14 +44,21 @@ const App: React.FC = () => {
       if (profile) {
         setCurrentUser({
           id: profile.id,
-          username: profile.full_name || 'User',
+          username: profile.full_name || userAuth.user_metadata?.full_name || 'AddaSangi User',
           avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
           coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
           bio: profile.bio,
-          email: profile.email || '',
-          location: profile.location,
-          gender: profile.gender,
-          dob: profile.dob
+          email: profile.email || userAuth.email,
+          location: profile.location
+        });
+      } else {
+        // নতুন ইউজার বা প্রোফাইল টেবিল সিঙ্ক না হওয়া পর্যন্ত সেশন ডেটা ব্যবহার করুন
+        setCurrentUser({
+          id: uid,
+          username: userAuth.user_metadata?.full_name || 'New Sangi',
+          avatar: `https://picsum.photos/seed/${uid}/200`,
+          email: userAuth.email,
+          bio: 'Welcome to AddaSangi!'
         });
       }
     } catch (err) {
@@ -55,11 +67,14 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // লোডিং স্ক্রিনে আটকে গেলে ৫ সেকেন্ড পর একটি রিফ্রেশ বাটন দেখাবে
+    const timeout = setTimeout(() => setShowRefreshButton(true), 5000);
+
     const initAuth = async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
       setSession(s);
       if (s) {
-        await fetchProfile(s.user.id);
+        await fetchProfile(s.user);
       }
       setLoadingSession(false);
     };
@@ -69,14 +84,17 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s);
       if (s) {
-        await fetchProfile(s.user.id);
+        await fetchProfile(s.user);
       } else {
         setCurrentUser(null);
       }
       setLoadingSession(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, [fetchProfile]);
 
   const handleSearch = useCallback(async (query: string) => {
@@ -84,8 +102,7 @@ const App: React.FC = () => {
       setSearchResults([]);
       return;
     }
-    // Search by full_name or email for better results
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('profiles')
       .select('*')
       .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
@@ -176,27 +193,33 @@ const App: React.FC = () => {
     setActiveTab(AppTab.MESSAGES);
   };
 
-  if (loadingSession) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white">
-      <img src={LOGO_URL} className="w-20 h-20 animate-pulse rounded-2xl mb-4" alt="logo" />
-      <div className="flex flex-col items-center gap-2">
-         <p className="text-[#b71c1c] font-black text-lg animate-bounce">AddaSangi</p>
-         <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-red-600 animate-[loading_1.5s_infinite_linear]"></div>
+  // কাস্টম লোডিং স্ক্রিন যাতে বাটন আছে
+  const renderLoadingScreen = (msg: string) => (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-white p-6">
+      <img src={LOGO_URL} className="w-20 h-20 animate-pulse rounded-2xl mb-6 shadow-xl" alt="logo" />
+      <div className="flex flex-col items-center gap-4 text-center">
+         <p className="text-[#b71c1c] font-black text-xl animate-bounce">{msg}</p>
+         <div className="w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-red-600 animate-[loading_2s_infinite_linear]"></div>
          </div>
+         {showRefreshButton && (
+           <button 
+             onClick={() => window.location.reload()}
+             className="mt-6 px-6 py-2 bg-gray-900 text-white rounded-full font-bold text-sm shadow-lg animate-in fade-in zoom-in"
+           >
+             Problem? Tap to Refresh
+           </button>
+         )}
       </div>
       <style>{`@keyframes loading { 0% { width: 0; } 100% { width: 100%; } }`}</style>
     </div>
   );
 
+  if (loadingSession) return renderLoadingScreen("AddaSangi Loading...");
+
   if (!session) return <Login onLogin={() => {}} />;
   
-  if (!currentUser) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white">
-      <img src={LOGO_URL} className="w-16 h-16 animate-spin rounded-2xl mb-4" alt="logo" />
-      <p className="text-gray-500 font-bold">Connecting Profile...</p>
-    </div>
-  );
+  if (!currentUser) return renderLoadingScreen("Syncing your Profile...");
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans overflow-x-hidden">
@@ -253,7 +276,7 @@ const App: React.FC = () => {
         <main className="flex-1 min-w-0 px-2 py-4">
           <div className={`${activeTab === AppTab.PROFILE ? 'max-w-none' : 'max-w-[680px]'} mx-auto`}>
             {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={handleLike} onRefresh={loadFeed} onPostCreate={handlePostCreate} onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
-            {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} onUpdateProfile={async (u) => { await supabase.from('profiles').update(u).eq('id', currentUser.id); fetchProfile(currentUser.id); }} onPostCreate={handlePostCreate} onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} onLike={handleLike} currentUser={currentUser} />}
+            {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} onUpdateProfile={async (u) => { await supabase.from('profiles').update(u).eq('id', currentUser.id); fetchProfile(session?.user); }} onPostCreate={handlePostCreate} onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} onLike={handleLike} currentUser={currentUser} />}
             {activeTab === AppTab.VIDEOS && <VideoFeed posts={posts} loading={loading} onLike={handleLike} currentUser={currentUser} />}
             {activeTab === AppTab.SEARCH && (
                <div className="flex flex-col gap-4">
