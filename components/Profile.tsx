@@ -33,7 +33,7 @@ const Profile: React.FC<ProfileProps> = ({
     if (onUpdateProfile) {
       onUpdateProfile({
         bio: editBio,
-        username: editUsername,
+        full_name: editUsername, // Ensure full_name is updated in Supabase
         location: editLocation
       });
     }
@@ -55,7 +55,7 @@ const Profile: React.FC<ProfileProps> = ({
           </div>
           <div className="text-center md:text-left md:pb-6 flex-1 pt-4">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tighter">{user.username}</h2>
-            <p className="text-gray-500 font-bold text-sm">{posts.length} Posts · Profile Info</p>
+            <p className="text-gray-500 font-bold text-sm">{posts.length} Posts · User Profile</p>
           </div>
           {isOwnProfile && (
             <button onClick={() => setIsEditModalOpen(true)} className="bg-gray-100 text-gray-800 px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-gray-200 border">
@@ -70,15 +70,21 @@ const Profile: React.FC<ProfileProps> = ({
           <div className="bg-white p-4 shadow-sm rounded-xl border">
             <h3 className="text-xl font-black text-gray-900 mb-4">Intro</h3>
             <div className="space-y-4">
-              <p className="text-gray-700 font-medium text-center">{user.bio || "No bio added yet."}</p>
+              <div className="text-gray-700 font-medium text-center bg-gray-50 p-3 rounded-lg border border-dashed">
+                {user.bio || "Write something about yourself in the edit profile section."}
+              </div>
               <div className="border-t pt-4 space-y-3">
                 <div className="flex items-center gap-3 text-sm font-bold text-gray-600">
-                  <i className="fa-solid fa-location-dot text-red-600"></i>
-                  <span>Lives in <span className="text-gray-900">{user.location || "Add Location"}</span></span>
+                  <i className="fa-solid fa-location-dot text-red-600 w-5 text-center"></i>
+                  <span>Lives in <span className="text-gray-900">{user.location || "Add your location"}</span></span>
                 </div>
                 <div className="flex items-center gap-3 text-sm font-bold text-gray-600">
-                  <i className="fa-solid fa-cake-candles text-red-600"></i>
-                  <span>Birthday: <span className="text-gray-900">{user.dob || "Not set"}</span></span>
+                  <i className="fa-solid fa-cake-candles text-red-600 w-5 text-center"></i>
+                  <span>Birthday: <span className="text-gray-900">{user.dob || "Not specified"}</span></span>
+                </div>
+                <div className="flex items-center gap-3 text-sm font-bold text-gray-600">
+                  <i className="fa-solid fa-venus-mars text-red-600 w-5 text-center"></i>
+                  <span>Gender: <span className="text-gray-900">{user.gender || "Not specified"}</span></span>
                 </div>
               </div>
             </div>
@@ -87,54 +93,69 @@ const Profile: React.FC<ProfileProps> = ({
 
         <div className="flex-1 flex flex-col gap-4">
           <div className="bg-white p-4 rounded-xl border shadow-sm">
-            <h3 className="text-lg font-black mb-4">Your Addas</h3>
-            {posts.map(post => (
-              <PostCard key={post.id} post={post} currentUser={currentUser} onLike={(r) => onLike?.(post.id, r)} onDelete={() => onPostDelete?.(post.id)} />
-            ))}
+            <h3 className="text-lg font-black mb-4">Your Feed</h3>
+            {posts.length > 0 ? (
+              posts.map(post => (
+                <PostCard key={post.id} post={post} currentUser={currentUser} onLike={(r) => onLike?.(post.id, r)} onDelete={() => onPostDelete?.(post.id)} />
+              ))
+            ) : (
+              <p className="text-center text-gray-400 py-10 font-bold">No posts to show yet.</p>
+            )}
           </div>
         </div>
       </div>
 
       {isEditModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl flex flex-col">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             <header className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-black">Edit Profile Info</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="text-gray-500"><i className="fa-solid fa-xmark text-xl"></i></button>
+              <h2 className="text-xl font-black text-gray-900">Edit Profile Info</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500">
+                <i className="fa-solid fa-xmark text-xl"></i>
+              </button>
             </header>
-            <div className="p-6 space-y-5">
+            
+            <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
               <section>
-                <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-wide">Your Full Name</label>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Your Full Name</label>
                 <input 
                   type="text" 
                   value={editUsername} 
                   onChange={(e) => setEditUsername(e.target.value)} 
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 font-bold text-lg" 
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 font-bold text-gray-900 text-lg shadow-inner" 
                   placeholder="Enter your name"
                 />
               </section>
+              
               <section>
-                <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-wide">Bio</label>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Short Bio</label>
                 <textarea 
                   value={editBio} 
                   onChange={(e) => setEditBio(e.target.value)} 
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 min-h-[100px]" 
-                  placeholder="Write something about yourself"
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 min-h-[100px] text-gray-900 font-medium" 
+                  placeholder="Tell us about yourself..."
                 />
               </section>
+              
               <section>
-                <label className="block text-sm font-black text-gray-700 mb-2 uppercase tracking-wide">Location</label>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Current City / Location</label>
                 <input 
                   type="text" 
                   value={editLocation} 
                   onChange={(e) => setEditLocation(e.target.value)} 
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500" 
-                  placeholder="City, Country"
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 text-gray-900" 
+                  placeholder="e.g. Dhaka, Bangladesh"
                 />
               </section>
             </div>
+            
             <footer className="p-4 border-t bg-gray-50 rounded-b-2xl">
-              <button onClick={handleSaveProfile} className="w-full bg-[#b71c1c] text-white py-4 rounded-xl font-black text-lg shadow-lg">Save All Changes</button>
+              <button 
+                onClick={handleSaveProfile} 
+                className="w-full bg-[#b71c1c] text-white py-4 rounded-xl font-black text-lg shadow-lg hover:bg-[#a01818] active:scale-[0.98] transition-all"
+              >
+                Save All Updates
+              </button>
             </footer>
           </div>
         </div>
