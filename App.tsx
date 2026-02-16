@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AppTab, Post, User, Story, ReactionType } from './types';
 import Feed from './components/Feed';
 import Profile from './components/Profile';
@@ -26,52 +26,66 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const fetchProfile = useCallback(async (uid: string) => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', uid)
+        .single();
+      
+      if (profile) {
+        setCurrentUser({
+          id: profile.id,
+          username: profile.full_name || 'User',
+          avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
+          coverUrl: profile.cover_url,
+          bio: profile.bio,
+          email: profile.email || '',
+          location: profile.location,
+          gender: profile.gender,
+          dob: profile.dob
+        });
+      } else if (error) {
+        console.error("Profile fetch error:", error);
+      }
+    } catch (err) {
+      console.error("Unexpected error fetching profile:", err);
+    }
+  }, []);
+
   useEffect(() => {
-    const init = async () => {
+    const checkInitialSession = async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
+      setSession(s);
       if (s) {
-        setSession(s);
         await fetchProfile(s.user.id);
       }
       setLoadingSession(false);
     };
-    init();
+    checkInitialSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s);
-      if (s) await fetchProfile(s.user.id);
-      else setCurrentUser(null);
+      if (s) {
+        await fetchProfile(s.user.id);
+      } else {
+        setCurrentUser(null);
+      }
       setLoadingSession(false);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchProfile = async (uid: string) => {
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).single();
-    if (profile) {
-      setCurrentUser({
-        id: profile.id,
-        username: profile.full_name || 'User',
-        avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
-        coverUrl: profile.cover_url,
-        bio: profile.bio,
-        email: session?.user?.email,
-        location: profile.location,
-        gender: profile.gender,
-        dob: profile.dob
-      });
-    }
-  };
+  }, [fetchProfile]);
 
   useEffect(() => {
-    if (session) loadFeed();
-  }, [session]);
+    if (session && currentUser) loadFeed();
+  }, [session, currentUser]);
 
   const loadFeed = async () => {
     setLoading(true);
     try {
-      const { data: dbPosts, error } = await supabase
+      const { data: dbPosts } = await supabase
         .from('posts')
         .select(`
           *,
@@ -106,7 +120,7 @@ const App: React.FC = () => {
         setPosts([...formatted, ...aiPosts]);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Feed load error:", err);
     } finally {
       setLoading(false);
     }
@@ -114,11 +128,11 @@ const App: React.FC = () => {
 
   const handlePostCreate = async (caption: string) => {
     if (!currentUser) return;
-    const { data, error } = await supabase.from('posts').insert({
+    const { error } = await supabase.from('posts').insert({
       user_id: currentUser.id,
       caption: caption,
       image_url: `https://picsum.photos/seed/post-${Date.now()}/800/800`
-    }).select().single();
+    });
 
     if (!error) await loadFeed();
   };
@@ -153,21 +167,42 @@ const App: React.FC = () => {
     if (!error) await fetchProfile(currentUser.id);
   };
 
-  if (loadingSession) return <div className="min-h-screen flex items-center justify-center bg-white"><img src={LOGO_URL} className="w-16 animate-bounce" /></div>;
-  if (!session || !currentUser) return <Login onLogin={() => {}} />;
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <img src={LOGO_URL} className="w-20 h-20 animate-pulse rounded-2xl shadow-lg mb-4" alt="logo" />
+        <div className="flex gap-1">
+           <div className="w-2 h-2 bg-[#b71c1c] rounded-full animate-bounce"></div>
+           <div className="w-2 h-2 bg-[#1b5e20] rounded-full animate-bounce [animation-delay:0.2s]"></div>
+           <div className="w-2 h-2 bg-[#b71c1c] rounded-full animate-bounce [animation-delay:0.4s]"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return <Login onLogin={() => {}} />;
+  if (!currentUser) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#f0f2f5]">
+      <div className="bg-white p-8 rounded-2xl shadow-xl flex flex-col items-center">
+        <img src={LOGO_URL} className="w-16 h-16 mb-4" alt="logo" />
+        <p className="text-gray-600 font-bold animate-pulse">Setting up your profile...</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans">
-      {/* IMPROVED DESKTOP HEADER */}
       <header className="fixed top-0 left-0 right-0 h-14 bg-white border-b z-50 flex items-center px-4 shadow-sm">
         <div className="flex items-center gap-2 flex-1">
           <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveTab(AppTab.FEED)}>
-            <img src={LOGO_URL} className="w-8 h-8 rounded-lg" alt="logo" />
-            <h1 className="text-xl font-black hidden sm:block"><span className="text-[#b71c1c]">Adda</span><span className="text-[#1b5e20]">Sangi</span></h1>
+            <img src={LOGO_URL} className="w-9 h-9 rounded-lg" alt="logo" />
+            <h1 className="text-xl font-black hidden sm:block tracking-tighter">
+              <span className="text-[#b71c1c]">Adda</span><span className="text-[#1b5e20]">Sangi</span>
+            </h1>
           </div>
-          {/* SEARCH BOX FOR DESKTOP */}
+          {/* DESKTOP SEARCH */}
           <div className="ml-4 relative hidden md:block w-full max-w-[280px]">
-            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             <input 
               type="text" 
               placeholder="Search AddaSangi" 
@@ -182,7 +217,6 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* CENTER NAVIGATION ICONS (DESKTOP) */}
         <nav className="hidden lg:flex flex-1 justify-center items-center h-full gap-2">
            {[
              { id: AppTab.FEED, icon: 'fa-house' },
@@ -199,25 +233,31 @@ const App: React.FC = () => {
            ))}
         </nav>
 
-        <div className="flex items-center justify-end flex-1 gap-2">
-          <button className="w-10 h-10 bg-gray-100 rounded-full hidden sm:flex items-center justify-center text-gray-700 hover:bg-gray-200 transition-colors">
-            <i className="fa-solid fa-bell"></i>
+        <div className="flex items-center justify-end flex-1 gap-1.5 sm:gap-2">
+          {/* MOBILE SEARCH ICON */}
+          <button 
+            onClick={() => setActiveTab(AppTab.SEARCH)}
+            className={`w-9 h-9 md:hidden rounded-full flex items-center justify-center transition-colors ${activeTab === AppTab.SEARCH ? 'bg-red-50 text-[#b71c1c]' : 'bg-gray-100 text-gray-700'}`}
+          >
+            <i className="fa-solid fa-magnifying-glass text-sm"></i>
           </button>
-          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className="w-10 h-10 bg-gray-100 rounded-full hidden sm:flex items-center justify-center text-gray-700 hover:bg-gray-200 transition-colors">
-            <i className="fa-solid fa-comment"></i>
+          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className="w-9 h-9 sm:w-10 sm:h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-200 transition-colors">
+            <i className="fa-solid fa-comment text-sm sm:text-base"></i>
           </button>
-          <div className="flex items-center gap-2 ml-2 cursor-pointer" onClick={() => setActiveTab(AppTab.PROFILE)}>
-            <img src={currentUser.avatar} className="w-8 h-8 rounded-full border" alt="me" />
-            <span className="font-bold text-sm hidden lg:block">{currentUser.username.split(' ')[0]}</span>
+          <button onClick={() => setActiveTab(AppTab.NOTIFICATIONS)} className="w-9 h-9 sm:w-10 sm:h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-200 transition-colors">
+            <i className="fa-solid fa-bell text-sm sm:text-base"></i>
+          </button>
+          <div className="flex items-center gap-2 ml-1 cursor-pointer bg-gray-50 hover:bg-gray-100 p-1 sm:pr-3 rounded-full transition-all border" onClick={() => setActiveTab(AppTab.PROFILE)}>
+            <img src={currentUser.avatar} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-gray-200 shadow-sm" alt="me" />
+            <span className="font-bold text-xs hidden xl:block text-gray-800">{currentUser.username.split(' ')[0]}</span>
           </div>
-          <button onClick={() => supabase.auth.signOut()} className="w-9 h-9 bg-gray-100 rounded-full text-gray-500 hover:text-red-600 ml-2">
-            <i className="fa-solid fa-right-from-bracket"></i>
+          <button onClick={() => supabase.auth.signOut()} className="w-8 h-8 sm:w-9 sm:h-9 bg-gray-50 rounded-full text-gray-400 hover:text-red-600 border border-transparent hover:border-red-100 transition-all ml-1">
+            <i className="fa-solid fa-right-from-bracket text-sm"></i>
           </button>
         </div>
       </header>
 
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full pt-14">
-        {/* SIDEBAR ON LEFT */}
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={currentUser} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
         
         <main className="flex-1 min-w-0 px-2 py-4">
@@ -247,19 +287,35 @@ const App: React.FC = () => {
                 currentUser={currentUser} 
               />
             )}
-            {activeTab === AppTab.VIDEOS && <VideoFeed posts={posts} loading={loading} onLike={handleLike} />}
+            {activeTab === AppTab.VIDEOS && <VideoFeed posts={posts} loading={loading} onLike={handleLike} currentUser={currentUser} />}
             {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
-            {activeTab === AppTab.SEARCH && <SearchResults results={[]} query={searchQuery} onUserSelect={() => {}} />}
+            {activeTab === AppTab.SEARCH && (
+              <div className="flex flex-col gap-4">
+                {/* SEARCH INPUT FOR MOBILE INSIDE THE TAB */}
+                <div className="md:hidden bg-white p-3 rounded-xl shadow-sm border mb-2">
+                   <div className="relative">
+                      <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                      <input 
+                        type="text" 
+                        placeholder="Search AddaSangi" 
+                        autoFocus
+                        className="w-full bg-gray-100 rounded-full py-2 pl-10 pr-4 outline-none border focus:bg-white focus:border-red-100 transition-all text-sm"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                   </div>
+                </div>
+                <SearchResults results={[]} query={searchQuery} onUserSelect={() => {}} />
+              </div>
+            )}
             {activeTab === AppTab.MESSAGES && <Messaging />}
             {activeTab === AppTab.NOTIFICATIONS && <Notifications />}
           </div>
         </main>
 
-        {/* CONTACTS SIDEBAR ON RIGHT */}
-        <ContactsSidebar onContactClick={(u) => { setActiveTab(AppTab.PROFILE); }} />
+        <ContactsSidebar onContactClick={() => setActiveTab(AppTab.PROFILE)} />
       </div>
       
-      {/* BOTTOM NAV ONLY FOR MOBILE */}
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
     </div>
   );

@@ -1,15 +1,17 @@
 
 import React from 'react';
-import { Post, ReactionType } from '../types';
+import { Post, ReactionType, User } from '../types';
 import PostCard from './PostCard';
 
 interface VideoFeedProps {
   posts: Post[];
   loading: boolean;
   onLike: (id: string, reaction?: ReactionType) => void;
+  // Added currentUser to fix the PostCard property missing error
+  currentUser: User;
 }
 
-const VideoFeed: React.FC<VideoFeedProps> = ({ posts, loading, onLike }) => {
+const VideoFeed: React.FC<VideoFeedProps> = ({ posts, loading, onLike, currentUser }) => {
   // Filter for posts that might represent videos (mocking it for now)
   const videoPosts = posts.slice(0, 5); 
 
@@ -31,7 +33,8 @@ const VideoFeed: React.FC<VideoFeedProps> = ({ posts, loading, onLike }) => {
         ) : (
           videoPosts.map(post => (
             <div key={post.id} className="relative group">
-              <PostCard post={post} onLike={(reaction) => onLike(post.id, reaction)} />
+              {/* Added currentUser prop to PostCard as it is required by PostCardProps */}
+              <PostCard post={post} currentUser={currentUser} onLike={(reaction) => onLike(post.id, reaction)} />
               {/* Mocking a Play Icon Overlay */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="w-16 h-16 bg-black/40 rounded-full flex items-center justify-center backdrop-blur-sm border border-white/30">

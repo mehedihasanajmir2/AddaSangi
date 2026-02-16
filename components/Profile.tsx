@@ -38,7 +38,6 @@ const Profile: React.FC<ProfileProps> = ({
   const [editGender, setEditGender] = useState(user.gender || '');
   const [editLocation, setEditLocation] = useState(user.location || 'Dhaka, Bangladesh');
   
-  // Birthday editing state
   const userDob = user.dob ? new Date(user.dob) : new Date(2000, 0, 1);
   const [birthDay, setBirthDay] = useState(userDob.getDate().toString());
   const [birthMonth, setBirthMonth] = useState((userDob.getMonth() + 1).toString());
@@ -69,30 +68,11 @@ const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveProfile = () => {
     setErrorMsg('');
-
-    // 1. Name Removal Prevention
     if (!editUsername.trim()) {
-      setErrorMsg('Name cannot be removed. You must have a name on your profile.');
+      setErrorMsg('Name cannot be empty.');
       return;
     }
 
-    // 2. Name Change Logic (30 days restriction)
-    if (editUsername !== user.username) {
-      if (user.lastNameChangeDate) {
-        const lastChange = new Date(user.lastNameChangeDate);
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        
-        if (lastChange > thirtyDaysAgo) {
-          const diffTime = Math.abs(lastChange.getTime() + (30 * 24 * 60 * 60 * 1000) - new Date().getTime());
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          setErrorMsg(`You cannot change your name yet. Please wait another ${diffDays} day(s). Name changes are limited to once every 30 days.`);
-          return;
-        }
-      }
-    }
-
-    // 3. Birthday Logic (15 years restriction)
     const newAge = calculateAge(parseInt(birthYear), parseInt(birthMonth), parseInt(birthDay));
     if (newAge < 15) {
       setErrorMsg('You must be at least 15 years old.');
@@ -101,20 +81,13 @@ const Profile: React.FC<ProfileProps> = ({
 
     if (onUpdateProfile) {
       const dobFormatted = `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`;
-      const updates: Partial<User> = {
+      onUpdateProfile({
         bio: editBio,
         username: editUsername.trim(),
         gender: editGender,
         location: editLocation,
         dob: dobFormatted
-      };
-
-      // If name changed, update the timestamp
-      if (editUsername !== user.username) {
-        updates.lastNameChangeDate = new Date().toISOString();
-      }
-
-      onUpdateProfile(updates);
+      });
     }
     setIsEditModalOpen(false);
   };
@@ -125,30 +98,16 @@ const Profile: React.FC<ProfileProps> = ({
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
-        if (type === 'avatar') {
-          onUpdateProfile({ avatar: base64String });
-        } else {
-          onUpdateProfile({ coverUrl: base64String });
-        }
+        if (type === 'avatar') onUpdateProfile({ avatar: base64String });
+        else onUpdateProfile({ coverUrl: base64String });
       };
       reader.readAsDataURL(file);
     }
   };
 
   const triggerFileInput = (type: 'avatar' | 'cover') => {
-    if (type === 'avatar') {
-      profileInputRef.current?.click();
-    } else {
-      coverInputRef.current?.click();
-    }
-  };
-
-  const handlePostSubmit = () => {
-    if (newPostText.trim() && onPostCreate) {
-      onPostCreate(newPostText);
-      setNewPostText('');
-      setIsPostingModalOpen(false);
-    }
+    if (type === 'avatar') profileInputRef.current?.click();
+    else coverInputRef.current?.click();
   };
 
   const formattedDob = user.dob ? new Date(user.dob).toLocaleDateString('en-GB', {
@@ -160,142 +119,116 @@ const Profile: React.FC<ProfileProps> = ({
   const displayCover = user.coverUrl || `https://picsum.photos/seed/cover-${user.id}/1200/400`;
 
   return (
-    <div className="animate-in fade-in duration-300 bg-[#f0f2f5] min-h-screen">
-      {/* Hidden File Inputs */}
-      <input 
-        type="file" 
-        ref={profileInputRef} 
-        className="hidden" 
-        accept="image/*" 
-        onChange={(e) => handleFileChange(e, 'avatar')} 
-      />
-      <input 
-        type="file" 
-        ref={coverInputRef} 
-        className="hidden" 
-        accept="image/*" 
-        onChange={(e) => handleFileChange(e, 'cover')} 
-      />
+    <div className="animate-in fade-in duration-300 bg-[#f0f2f5] min-h-screen pb-20">
+      <input type="file" ref={profileInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar')} />
+      <input type="file" ref={coverInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'cover')} />
 
-      {/* Header Section */}
+      {/* Profile Header */}
       <div className="bg-white pb-4 shadow-sm">
-        <div className="h-44 md:h-64 bg-gray-200 relative group overflow-hidden">
+        <div className="h-44 md:h-80 bg-gray-200 relative overflow-hidden">
           <img src={displayCover} className="w-full h-full object-cover" alt="cover" />
           {isOwnProfile && (
-            <button 
-              onClick={() => triggerFileInput('cover')}
-              className="absolute bottom-3 right-3 bg-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md hover:bg-gray-50 transition-all z-10"
-            >
-              <i className="fa-solid fa-camera text-[#1b5e20]"></i> <span className="hidden md:inline text-gray-800">Edit Cover Photo</span>
+            <button onClick={() => triggerFileInput('cover')} className="absolute bottom-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg border border-gray-200 hover:bg-white transition-all">
+              <i className="fa-solid fa-camera text-red-600"></i> Edit Cover
             </button>
           )}
         </div>
         
-        <div className="px-4 -mt-12 md:-mt-16 relative flex flex-col md:flex-row items-center md:items-end gap-4 max-w-5xl mx-auto">
+        <div className="px-4 -mt-16 md:-mt-24 relative flex flex-col items-center md:flex-row md:items-end gap-4 max-w-5xl mx-auto">
           <div className="relative">
-            <div className="w-32 h-32 md:w-44 md:h-44 rounded-full border-4 border-white overflow-hidden shadow-xl bg-white">
+            <div className="w-36 h-36 md:w-48 md:h-48 rounded-full border-4 border-white overflow-hidden shadow-2xl bg-white">
               <img src={user.avatar} className="w-full h-full object-cover" alt={user.username} />
             </div>
             {isOwnProfile && (
-              <button 
-                onClick={() => triggerFileInput('avatar')}
-                className="absolute bottom-2 right-2 bg-gray-200 p-2.5 rounded-full border-2 border-white flex items-center justify-center shadow-lg hover:bg-gray-300 transition-all z-10"
-              >
-                <i className="fa-solid fa-camera text-[#1b5e20] text-sm"></i>
+              <button onClick={() => triggerFileInput('avatar')} className="absolute bottom-2 right-2 bg-gray-100 p-3 rounded-full border-2 border-white shadow-lg hover:bg-gray-200 text-red-600 transition-all">
+                <i className="fa-solid fa-camera text-sm"></i>
               </button>
             )}
           </div>
           
-          <div className="text-center md:text-left md:pb-3 flex-1 pt-6 md:pt-0">
+          <div className="text-center md:text-left md:pb-6 flex-1 pt-4">
             <div className="flex items-center justify-center md:justify-start gap-2">
-              <h2 className="text-2xl md:text-4xl font-black text-gray-900 leading-tight tracking-tight mt-1">{user.username}</h2>
-              {user.isVerified && <i className="fa-solid fa-circle-check text-blue-500 text-xl"></i>}
+              <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tighter">{user.username}</h2>
+              <i className="fa-solid fa-circle-check text-blue-500 text-xl"></i>
             </div>
-            <p className="text-gray-500 font-bold text-sm md:text-base mt-1 hover:underline cursor-pointer">
-              {Math.floor(Math.random() * 2000) + 500} Friends
-            </p>
+            <p className="text-gray-500 font-bold text-sm mt-1">{posts.length} Posts · {Math.floor(Math.random() * 200) + 50} Sangi</p>
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="px-4 mt-6 flex gap-2 max-w-5xl mx-auto">
           {isOwnProfile ? (
             <>
-              <button onClick={() => setIsPostingModalOpen(true)} className="flex-1 bg-[#1b5e20] text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:bg-[#144d18] transition-all active:scale-95">
-                <i className="fa-solid fa-plus-circle text-lg"></i> Add to Story
+              <button onClick={() => setIsPostingModalOpen(true)} className="flex-1 bg-[#b71c1c] text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:bg-[#a01818] transition-all">
+                <i className="fa-solid fa-plus-circle"></i> Add Story
               </button>
-              <button onClick={() => setIsEditModalOpen(true)} className="flex-1 bg-gray-200 text-gray-900 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-300 transition-all">
+              <button onClick={() => setIsEditModalOpen(true)} className="flex-1 bg-gray-100 text-gray-800 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-all border">
                 <i className="fa-solid fa-pen"></i> Edit Profile
               </button>
             </>
           ) : (
-            <>
-              <button className="flex-1 bg-[#1b5e20] text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:bg-[#144d18] transition-all">
-                <i className="fa-solid fa-user-plus"></i> Add Friend
-              </button>
-              <button className="flex-1 bg-gray-200 text-gray-900 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-gray-300 transition-all">
-                <i className="fa-solid fa-message"></i> Message
-              </button>
-            </>
+            <button className="flex-1 bg-[#1b5e20] text-white py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-md">
+              <i className="fa-solid fa-user-plus"></i> Add Sangi
+            </button>
           )}
-          <button className="w-12 bg-gray-200 rounded-lg flex items-center justify-center hover:bg-gray-300 transition-all">
-             <i className="fa-solid fa-ellipsis text-lg"></i>
-          </button>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-4 mt-4 px-0 md:px-4">
-        {/* Sidebar Info */}
+      <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-4 mt-4 px-2 md:px-4">
+        {/* Intro Section */}
         <div className="w-full md:w-[360px] flex flex-col gap-4">
-          <div className="bg-white p-4 shadow-sm md:rounded-xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-black text-gray-900">Intro</h3>
-              {isOwnProfile && <button onClick={() => setIsEditModalOpen(true)} className="text-[#1b5e20] text-xs font-bold hover:underline">Edit</button>}
-            </div>
+          <div className="bg-white p-4 shadow-sm rounded-xl border border-gray-100">
+            <h3 className="text-xl font-black text-gray-900 mb-4">Intro</h3>
             <div className="space-y-4">
-              <div className="text-center text-[15px] text-gray-800 mb-4 px-2 font-medium">{user.bio || 'Living the AddaSangi life! 🇧🇩'}</div>
-              <div className="border-t border-gray-100 pt-4 flex flex-col gap-3">
-                <div className="flex items-center gap-3 text-[14px] text-gray-600">
-                  <i className="fa-solid fa-envelope text-gray-400 w-5 text-center text-lg"></i>
-                  <span>Email: <span className="font-bold text-gray-900">{user.email || 'Private'}</span></span>
+              <div className="text-center text-[15px] text-gray-700 font-medium py-2">
+                {user.bio ? user.bio : (isOwnProfile ? <span className="text-gray-400 italic">Add a short bio to tell sangis about yourself</span> : 'No bio yet')}
+              </div>
+              
+              <div className="border-t pt-4 flex flex-col gap-4">
+                <div className="flex items-center gap-3 text-sm text-gray-600">
+                  <i className="fa-solid fa-cake-candles w-5 text-center text-red-600/70"></i>
+                  <span>Birthday: <span className="font-bold text-gray-900">{formattedDob || (isOwnProfile ? 'Not set' : 'Private')}</span></span>
+                </div>
+                <div className="flex items-center gap-3 text-sm text-gray-600">
+                  <i className="fa-solid fa-location-dot w-5 text-center text-red-600/70"></i>
+                  <span>Lives in <span className="font-bold text-gray-900">{user.location || (isOwnProfile ? 'Add location' : 'Dhaka, Bangladesh')}</span></span>
+                </div>
+                <div className="flex items-center gap-3 text-sm text-gray-600">
+                  <i className="fa-solid fa-envelope w-5 text-center text-red-600/70"></i>
+                  <span className="truncate">Email: <span className="font-bold text-gray-900">{user.email || 'Private'}</span></span>
                 </div>
                 {user.gender && (
-                  <div className="flex items-center gap-3 text-[14px] text-gray-600">
-                    <i className={`fa-solid ${user.gender === 'Male' ? 'fa-mars' : 'fa-venus'} text-gray-400 w-5 text-center text-lg`}></i>
-                    <span>Gender: <span className="font-bold text-gray-900">{user.gender}</span></span>
-                  </div>
+                   <div className="flex items-center gap-3 text-sm text-gray-600">
+                     <i className={`fa-solid ${user.gender === 'Male' ? 'fa-mars' : 'fa-venus'} w-5 text-center text-red-600/70`}></i>
+                     <span>Gender: <span className="font-bold text-gray-900">{user.gender}</span></span>
+                   </div>
                 )}
-                {formattedDob && (
-                  <div className="flex items-center gap-3 text-[14px] text-gray-600">
-                    <i className="fa-solid fa-cake-candles text-gray-400 w-5 text-center text-lg"></i>
-                    <span>Birthday: <span className="font-bold text-gray-900">{formattedDob}</span></span>
-                  </div>
-                )}
-                <div className="flex items-center gap-3 text-[14px] text-gray-600">
-                  <i className="fa-solid fa-location-dot text-gray-400 w-5 text-center text-lg"></i>
-                  <span>Lives in <span className="font-bold text-gray-900">{user.location || 'Dhaka, Bangladesh'}</span></span>
-                </div>
               </div>
+              
+              {isOwnProfile && (
+                <button onClick={() => setIsEditModalOpen(true)} className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 py-2 rounded-lg text-sm font-bold border transition-colors mt-2">
+                  Edit Details
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Main Feed Area */}
+        {/* Posts Area */}
         <div className="flex-1 flex flex-col gap-4">
           {isOwnProfile && (
-            <div className="bg-white p-4 shadow-sm md:rounded-xl">
-              <div className="flex gap-3 mb-3">
-                <img src={currentUser.avatar} className="w-10 h-10 rounded-full border shadow-sm" alt="" />
-                <button onClick={() => setIsPostingModalOpen(true)} className="flex-1 bg-gray-100 hover:bg-gray-200 transition-colors rounded-full text-left px-4 py-2 text-gray-500 font-medium">
-                  What's on your mind, {currentUser.username.split(' ')[0]}?
+            <div className="bg-white p-4 shadow-sm rounded-xl border border-gray-100">
+              <div className="flex gap-3">
+                <img src={currentUser.avatar} className="w-10 h-10 rounded-full border" alt="" />
+                <button onClick={() => setIsPostingModalOpen(true)} className="flex-1 bg-gray-100 hover:bg-gray-200 transition-colors rounded-full text-left px-4 py-2 text-gray-500 text-sm font-medium">
+                  Write something on your profile...
                 </button>
               </div>
             </div>
           )}
 
           <div className="flex flex-col gap-4">
-            <div className="bg-white p-4 shadow-sm md:rounded-xl flex justify-between items-center">
-              <h3 className="text-xl font-black text-gray-900">Posts</h3>
+            <div className="bg-white p-4 shadow-sm rounded-xl border border-gray-100 flex justify-between items-center">
+              <h3 className="text-lg font-black text-gray-900">Your Addas</h3>
             </div>
             {posts.length > 0 ? (
               posts.map(post => (
@@ -308,116 +241,75 @@ const Profile: React.FC<ProfileProps> = ({
                 />
               ))
             ) : (
-              <div className="bg-white p-12 shadow-sm md:rounded-xl text-center text-gray-500 font-bold">No posts yet</div>
+              <div className="bg-white p-12 shadow-sm rounded-xl text-center text-gray-400 font-bold border border-dashed">
+                You haven't shared anything yet.
+              </div>
             )}
           </div>
         </div>
       </div>
       
-      {/* Edit Profile Modal */}
+      {/* Edit Modal */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-[500px] rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <header className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="w-8"></div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+            <header className="p-4 border-b flex items-center justify-between bg-gray-50">
               <h2 className="text-lg font-black text-gray-900">Edit Profile</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+              <button onClick={() => setIsEditModalOpen(false)} className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-gray-500 shadow-sm">
                 <i className="fa-solid fa-xmark"></i>
               </button>
             </header>
             
-            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-              {errorMsg && (
-                <div className="p-3 bg-red-50 text-red-700 text-sm font-bold rounded-lg border border-red-200 flex items-center gap-2 animate-in slide-in-from-top-2">
-                  <i className="fa-solid fa-circle-exclamation"></i> {errorMsg}
-                </div>
-              )}
-
+            <div className="p-6 space-y-6 overflow-y-auto max-h-[60vh]">
+              {errorMsg && <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-lg border border-red-100">{errorMsg}</div>}
+              
               <section>
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-black text-gray-900">Profile Picture</h4>
-                  <button onClick={() => triggerFileInput('avatar')} className="text-[#1b5e20] text-sm font-bold hover:underline">Edit</button>
-                </div>
-                <div className="flex justify-center py-2">
-                  <img src={user.avatar} className="w-28 h-28 rounded-full border-2 border-gray-100 object-cover" alt="" />
-                </div>
+                <h4 className="font-black text-gray-900 mb-2 text-sm uppercase tracking-wider">Full Name</h4>
+                <input type="text" value={editUsername} onChange={(e) => setEditUsername(e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:border-red-500 font-bold" />
               </section>
 
               <section>
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-black text-gray-900">Cover Photo</h4>
-                  <button onClick={() => triggerFileInput('cover')} className="text-[#1b5e20] text-sm font-bold hover:underline">Edit</button>
-                </div>
-                <div className="h-24 bg-gray-100 rounded-lg overflow-hidden">
-                   <img src={displayCover} className="w-full h-full object-cover" alt="" />
-                </div>
+                <h4 className="font-black text-gray-900 mb-2 text-sm uppercase tracking-wider">Bio</h4>
+                <textarea value={editBio} onChange={(e) => setEditBio(e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:border-red-500 font-medium" rows={3} placeholder="Tell us about yourself..." />
               </section>
 
               <section>
-                <h4 className="font-black text-gray-900 mb-2">Full Name</h4>
-                <input 
-                  type="text"
-                  value={editUsername}
-                  onChange={(e) => setEditUsername(e.target.value)}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#1b5e20] font-bold"
-                  placeholder="Enter your name"
-                />
-                <p className="text-[10px] text-gray-500 mt-1 font-bold">Note: You can change your name once every 30 days.</p>
+                <h4 className="font-black text-gray-900 mb-2 text-sm uppercase tracking-wider">Location</h4>
+                <input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl outline-none focus:border-red-500" />
               </section>
 
               <section>
-                <h4 className="font-black text-gray-900 mb-2">Bio</h4>
-                <textarea 
-                  value={editBio}
-                  onChange={(e) => setEditBio(e.target.value)}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#1b5e20] font-medium"
-                  rows={2}
-                  placeholder="Add a bio..."
-                />
-              </section>
-
-              <section>
-                <h4 className="font-black text-gray-900 mb-2">Location</h4>
-                <input 
-                  type="text"
-                  value={editLocation}
-                  onChange={(e) => setEditLocation(e.target.value)}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#1b5e20]"
-                />
-              </section>
-
-              <section>
-                <h4 className="font-black text-gray-900 mb-2">Birthday</h4>
+                <h4 className="font-black text-gray-900 mb-2 text-sm uppercase tracking-wider">Birthday</h4>
                 <div className="flex gap-2">
-                  <select value={birthDay} onChange={(e) => setBirthDay(e.target.value)} className="flex-1 p-2 bg-gray-50 border rounded-lg">
+                  <select value={birthDay} onChange={(e) => setBirthDay(e.target.value)} className="flex-1 p-3 bg-gray-50 border rounded-xl">
                     {daysInMonth.map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
-                  <select value={birthMonth} onChange={(e) => setBirthMonth(e.target.value)} className="flex-1 p-2 bg-gray-50 border rounded-lg">
+                  <select value={birthMonth} onChange={(e) => setBirthMonth(e.target.value)} className="flex-1 p-3 bg-gray-50 border rounded-xl">
                     {months.map((m, i) => <option key={m} value={(i + 1).toString()}>{m}</option>)}
                   </select>
-                  <select value={birthYear} onChange={(e) => setBirthYear(e.target.value)} className="flex-1 p-2 bg-gray-50 border rounded-lg">
+                  <select value={birthYear} onChange={(e) => setBirthYear(e.target.value)} className="flex-1 p-3 bg-gray-50 border rounded-xl">
                     {years.map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
               </section>
 
               <section>
-                <h4 className="font-black text-gray-900 mb-2">Gender</h4>
+                <h4 className="font-black text-gray-900 mb-2 text-sm uppercase tracking-wider">Gender</h4>
                 <div className="grid grid-cols-2 gap-3">
                   {['Female', 'Male'].map((g) => (
-                    <label key={g} className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer ${editGender === g ? 'border-[#1b5e20] bg-green-50' : 'bg-white'}`}>
-                      <input type="radio" checked={editGender === g} onChange={() => setEditGender(g)} className="accent-[#1b5e20]" />
-                      <span className="font-bold">{g}</span>
+                    <label key={g} className={`flex items-center gap-2 p-3 border rounded-xl cursor-pointer ${editGender === g ? 'border-red-500 bg-red-50' : 'bg-gray-50'}`}>
+                      <input type="radio" checked={editGender === g} onChange={() => setEditGender(g)} className="accent-red-600" />
+                      <span className="font-bold text-sm">{g}</span>
                     </label>
                   ))}
                 </div>
               </section>
             </div>
 
-            <footer className="p-4 border-t border-gray-100">
-               <button onClick={handleSaveProfile} className="w-full bg-[#1b5e20] text-white py-3 rounded-lg font-black shadow-lg hover:bg-[#144d18] transition-all active:scale-95">
-                 Save Changes
-               </button>
+            <footer className="p-4 border-t bg-gray-50">
+              <button onClick={handleSaveProfile} className="w-full bg-[#b71c1c] text-white py-3.5 rounded-xl font-black shadow-lg hover:bg-[#a01818] transition-all">
+                Save Changes
+              </button>
             </footer>
           </div>
         </div>
