@@ -54,6 +54,38 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleUpdateProfile = async (updates: Partial<User>) => {
+    if (!currentUser) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: updates.full_name,
+          bio: updates.bio,
+          location: updates.location,
+          avatar_url: updates.avatar_url,
+          cover_url: updates.cover_url
+        })
+        .eq('id', currentUser.id);
+
+      if (error) throw error;
+
+      // Update local state immediately
+      setCurrentUser(prev => prev ? {
+        ...prev,
+        ...updates,
+        username: updates.full_name || prev.username,
+        avatar: updates.avatar_url || prev.avatar,
+        coverUrl: updates.cover_url || prev.coverUrl
+      } : null);
+      
+      alert("প্রোফাইল সফলভাবে আপডেট হয়েছে!");
+    } catch (err: any) {
+      console.error("Update Profile Error:", err);
+      alert("আপডেট করতে সমস্যা হয়েছে: " + err.message);
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -209,7 +241,7 @@ const App: React.FC = () => {
             {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={loadFeed} onRefresh={loadFeed} onPostCreate={loadFeed} onPostDelete={loadFeed} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
             {activeTab === AppTab.SEARCH && <SearchResults results={searchResults} query={searchQuery} onQueryChange={setSearchQuery} onUserSelect={openChat} onAddFriend={handleAddFriend} />}
             {activeTab === AppTab.MESSAGES && <Messaging currentUser={currentUser} targetUser={selectedChatUser} />}
-            {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} currentUser={currentUser} onPostDelete={loadFeed} onLike={loadFeed} />}
+            {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} currentUser={currentUser} onPostDelete={loadFeed} onLike={loadFeed} onUpdateProfile={handleUpdateProfile} />}
             {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
           </div>
         </main>
