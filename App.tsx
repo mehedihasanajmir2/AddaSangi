@@ -29,13 +29,13 @@ const App: React.FC = () => {
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
   const [showRefreshButton, setShowRefreshButton] = useState(false);
 
-  // স্মার্ট প্রোফাইল ফেচিং: ডাটাবেসে না থাকলেও সেশন থেকে ডেটা নিয়ে অ্যাপ চালু করবে
+  // প্রোফাইল লোডিং: সেশন ডেটা ব্যবহার করবে যদি ডাটাবেস আপডেট না থাকে
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
     const uid = userAuth.id;
     
     try {
-      const { data: profile, error } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', uid)
@@ -44,21 +44,20 @@ const App: React.FC = () => {
       if (profile) {
         setCurrentUser({
           id: profile.id,
-          username: profile.full_name || userAuth.user_metadata?.full_name || 'AddaSangi User',
+          username: profile.full_name || 'User',
           avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
           coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
           bio: profile.bio,
-          email: profile.email || userAuth.email,
+          email: profile.email,
           location: profile.location
         });
       } else {
-        // নতুন ইউজার বা প্রোফাইল টেবিল সিঙ্ক না হওয়া পর্যন্ত সেশন ডেটা ব্যবহার করুন
+        // নতুন অ্যাকাউন্ট খোলা হলে প্রোফাইল তৈরি না হওয়া পর্যন্ত সেশন ডেটা
         setCurrentUser({
           id: uid,
           username: userAuth.user_metadata?.full_name || 'New Sangi',
           avatar: `https://picsum.photos/seed/${uid}/200`,
-          email: userAuth.email,
-          bio: 'Welcome to AddaSangi!'
+          email: userAuth.email
         });
       }
     } catch (err) {
@@ -67,7 +66,6 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // লোডিং স্ক্রিনে আটকে গেলে ৫ সেকেন্ড পর একটি রিফ্রেশ বাটন দেখাবে
     const timeout = setTimeout(() => setShowRefreshButton(true), 5000);
 
     const initAuth = async () => {
@@ -97,16 +95,23 @@ const App: React.FC = () => {
     };
   }, [fetchProfile]);
 
+  // উন্নত সার্চ লজিক: নামের যেকোনো অংশের সাথে মিললে রেজাল্ট দেখাবে
   const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
+    if (!query.trim() || query.length < 2) {
       setSearchResults([]);
       return;
     }
-    const { data } = await supabase
+    
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
-      .limit(20);
+      .ilike('full_name', `%${query}%`)
+      .limit(10);
+
+    if (error) {
+      console.error("Search error:", error.message);
+      return;
+    }
 
     if (data) {
       setSearchResults(data.map(p => ({
@@ -121,7 +126,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => handleSearch(searchQuery), 400);
+    const timer = setTimeout(() => handleSearch(searchQuery), 300);
     return () => clearTimeout(timer);
   }, [searchQuery, handleSearch]);
 
@@ -193,33 +198,21 @@ const App: React.FC = () => {
     setActiveTab(AppTab.MESSAGES);
   };
 
-  // কাস্টম লোডিং স্ক্রিন যাতে বাটন আছে
   const renderLoadingScreen = (msg: string) => (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white p-6">
       <img src={LOGO_URL} className="w-20 h-20 animate-pulse rounded-2xl mb-6 shadow-xl" alt="logo" />
-      <div className="flex flex-col items-center gap-4 text-center">
-         <p className="text-[#b71c1c] font-black text-xl animate-bounce">{msg}</p>
-         <div className="w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-red-600 animate-[loading_2s_infinite_linear]"></div>
-         </div>
-         {showRefreshButton && (
-           <button 
-             onClick={() => window.location.reload()}
-             className="mt-6 px-6 py-2 bg-gray-900 text-white rounded-full font-bold text-sm shadow-lg animate-in fade-in zoom-in"
-           >
-             Problem? Tap to Refresh
-           </button>
-         )}
-      </div>
-      <style>{`@keyframes loading { 0% { width: 0; } 100% { width: 100%; } }`}</style>
+      <p className="text-[#b71c1c] font-black text-xl animate-bounce">{msg}</p>
+      {showRefreshButton && (
+        <button onClick={() => window.location.reload()} className="mt-6 px-6 py-2 bg-gray-900 text-white rounded-full font-bold text-sm">
+          Refresh Page
+        </button>
+      )}
     </div>
   );
 
   if (loadingSession) return renderLoadingScreen("AddaSangi Loading...");
-
   if (!session) return <Login onLogin={() => {}} />;
-  
-  if (!currentUser) return renderLoadingScreen("Syncing your Profile...");
+  if (!currentUser) return renderLoadingScreen("Syncing Profile...");
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans overflow-x-hidden">
@@ -235,8 +228,8 @@ const App: React.FC = () => {
             <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             <input 
               type="text" 
-              placeholder="Search Friends by Name" 
-              className="w-full bg-gray-100 rounded-full py-2 pl-10 pr-4 outline-none focus:bg-white focus:ring-1 focus:ring-red-200 text-sm text-gray-900 font-medium"
+              placeholder="Search Friends..." 
+              className="w-full bg-gray-100 rounded-full py-2 pl-10 pr-4 outline-none focus:bg-white focus:ring-1 focus:ring-red-200 text-sm text-gray-900 font-bold"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -261,9 +254,6 @@ const App: React.FC = () => {
           <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-9 h-9 rounded-full flex items-center justify-center ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-[#b71c1c]' : 'bg-gray-100 text-gray-700'}`}>
             <i className="fa-solid fa-comment"></i>
           </button>
-          <button onClick={() => setActiveTab(AppTab.NOTIFICATIONS)} className={`w-9 h-9 rounded-full flex items-center justify-center ${activeTab === AppTab.NOTIFICATIONS ? 'bg-red-50 text-[#b71c1c]' : 'bg-gray-100 text-gray-700'}`}>
-            <i className="fa-solid fa-bell"></i>
-          </button>
           <div className="flex items-center gap-2 ml-1 cursor-pointer bg-gray-50 p-1 rounded-full border hover:bg-gray-100" onClick={() => setActiveTab(AppTab.PROFILE)}>
             <img src={currentUser.avatar} className="w-7 h-7 rounded-full object-cover" alt="me" />
           </div>
@@ -281,7 +271,7 @@ const App: React.FC = () => {
             {activeTab === AppTab.SEARCH && (
                <div className="flex flex-col gap-4">
                  <div className="md:hidden bg-white p-3 rounded-xl shadow-sm border mb-2">
-                    <input type="text" placeholder="Search Friends by Name" className="w-full bg-gray-100 rounded-full py-2 px-4 outline-none text-gray-900 font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                    <input type="text" placeholder="Search Friends..." className="w-full bg-gray-100 rounded-full py-2 px-4 outline-none text-gray-900 font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                  </div>
                  <SearchResults results={searchResults} query={searchQuery} onUserSelect={startChatWith} />
                </div>

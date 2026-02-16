@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User, Post, ReactionType } from '../types';
 import PostCard from './PostCard';
 
@@ -30,6 +30,25 @@ const Profile: React.FC<ProfileProps> = ({
   const [editLocation, setEditLocation] = useState(user.location || '');
   const [editAvatar, setEditAvatar] = useState(user.avatar || '');
   const [editCover, setEditCover] = useState(user.coverUrl || '');
+  
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'cover') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        if (type === 'avatar') {
+          setEditAvatar(base64String);
+        } else {
+          setEditCover(base64String);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSaveProfile = () => {
     if (onUpdateProfile) {
@@ -49,12 +68,12 @@ const Profile: React.FC<ProfileProps> = ({
   return (
     <div className="animate-in fade-in duration-300 bg-[#f0f2f5] min-h-screen pb-20">
       <div className="bg-white pb-4 shadow-sm border-b">
-        <div className="h-44 md:h-80 bg-gray-200 relative overflow-hidden">
+        <div className="h-44 md:h-80 bg-gray-200 relative overflow-hidden group">
           <img src={displayCover} className="w-full h-full object-cover" alt="cover" />
           {isOwnProfile && (
             <button 
               onClick={() => setIsEditModalOpen(true)}
-              className="absolute bottom-4 right-4 bg-white/80 backdrop-blur-md p-2 rounded-lg text-xs font-bold shadow-lg flex items-center gap-2"
+              className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-md p-2 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-2 hover:bg-black/70 transition-all"
             >
               <i className="fa-solid fa-camera"></i> Edit Cover
             </button>
@@ -77,11 +96,11 @@ const Profile: React.FC<ProfileProps> = ({
               {user.username}
               {user.isVerified && <i className="fa-solid fa-circle-check text-blue-500 text-xl"></i>}
             </h2>
-            <p className="text-gray-500 font-bold text-sm">{posts.length} Posts · Profile Summary</p>
+            <p className="text-gray-500 font-bold text-sm">{posts.length} Posts · Member Since 2024</p>
           </div>
           {isOwnProfile && (
             <div className="flex gap-2 mb-4 md:mb-6">
-              <button onClick={() => setIsEditModalOpen(true)} className="bg-[#b71c1c] text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-[#a01818] shadow-md">
+              <button onClick={() => setIsEditModalOpen(true)} className="bg-[#b71c1c] text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-[#a01818] shadow-md transition-all active:scale-95">
                 <i className="fa-solid fa-pen"></i> Edit Profile
               </button>
             </div>
@@ -95,20 +114,20 @@ const Profile: React.FC<ProfileProps> = ({
             <h3 className="text-xl font-black text-gray-900 mb-4">Intro</h3>
             <div className="space-y-4">
               <div className="text-gray-800 font-bold text-center bg-gray-50 p-4 rounded-xl border-2 border-dashed border-gray-200">
-                {user.bio || "Click 'Edit Profile' to add a short bio about yourself!"}
+                {user.bio || "Write something interesting about yourself!"}
               </div>
               <div className="border-t pt-4 space-y-4">
                 <div className="flex items-center gap-4 text-sm font-bold text-gray-700">
                   <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center text-red-600">
                     <i className="fa-solid fa-location-dot"></i>
                   </div>
-                  <span>Lives in <span className="text-gray-900">{user.location || "Earth"}</span></span>
+                  <span>Lives in <span className="text-gray-900">{user.location || "Bangladesh"}</span></span>
                 </div>
                 <div className="flex items-center gap-4 text-sm font-bold text-gray-700">
                   <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600">
                     <i className="fa-solid fa-envelope"></i>
                   </div>
-                  <span className="truncate">{user.email || "Email Hidden"}</span>
+                  <span className="truncate">{user.email || "Private Email"}</span>
                 </div>
               </div>
             </div>
@@ -118,8 +137,8 @@ const Profile: React.FC<ProfileProps> = ({
         <div className="flex-1 flex flex-col gap-4">
           <div className="bg-white p-4 rounded-xl border shadow-sm">
             <h3 className="text-lg font-black mb-4 flex items-center justify-between">
-              Timeline Posts
-              <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-500">{posts.length} Total</span>
+              Timeline
+              <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-500">Your Activities</span>
             </h3>
             {posts.length > 0 ? (
               posts.map(post => (
@@ -130,7 +149,7 @@ const Profile: React.FC<ProfileProps> = ({
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-images text-2xl text-gray-300"></i>
                 </div>
-                <p className="text-gray-500 font-black">No posts to display on your timeline.</p>
+                <p className="text-gray-500 font-black">No posts to display yet.</p>
               </div>
             )}
           </div>
@@ -140,37 +159,70 @@ const Profile: React.FC<ProfileProps> = ({
       {isEditModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-[500px] rounded-3xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-hidden">
-            <header className="p-5 border-b flex justify-between items-center">
+            <header className="p-5 border-b flex justify-between items-center bg-white sticky top-0 z-10">
               <h2 className="text-2xl font-black text-gray-900">Customize Profile</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500">
+              <button onClick={() => setIsEditModalOpen(false)} className="w-10 h-10 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-colors">
                 <i className="fa-solid fa-xmark text-xl"></i>
               </button>
             </header>
             
             <div className="p-6 space-y-6 overflow-y-auto">
-              <section>
-                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Profile Picture URL</label>
-                <div className="flex gap-3 items-center">
-                  <img src={editAvatar} className="w-14 h-14 rounded-full border-2 border-red-500 object-cover shrink-0" alt="preview" />
+              {/* Profile Picture Section */}
+              <section className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                <label className="block text-xs font-black text-gray-500 mb-4 uppercase tracking-widest">Profile Picture</label>
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative group">
+                    <img src={editAvatar} className="w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover" alt="preview" />
+                    <button 
+                      onClick={() => avatarInputRef.current?.click()}
+                      className="absolute inset-0 bg-black/20 group-hover:bg-black/40 rounded-full flex items-center justify-center text-white transition-all"
+                    >
+                      <i className="fa-solid fa-camera text-xl"></i>
+                    </button>
+                  </div>
                   <input 
-                    type="text" 
-                    value={editAvatar} 
-                    onChange={(e) => setEditAvatar(e.target.value)} 
-                    className="flex-1 p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 font-bold text-gray-900 shadow-inner" 
-                    placeholder="Paste image link here"
+                    type="file" 
+                    ref={avatarInputRef} 
+                    className="hidden" 
+                    accept="image/*" 
+                    onChange={(e) => handleFileChange(e, 'avatar')} 
                   />
+                  <button 
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="px-6 py-2 bg-white border-2 border-red-100 text-red-600 rounded-xl font-bold text-sm hover:bg-red-50 transition-all flex items-center gap-2"
+                  >
+                    <i className="fa-solid fa-upload"></i> Upload Photo
+                  </button>
                 </div>
               </section>
 
-              <section>
-                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Cover Photo URL</label>
-                <input 
-                  type="text" 
-                  value={editCover} 
-                  onChange={(e) => setEditCover(e.target.value)} 
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 font-bold text-gray-900" 
-                  placeholder="Paste cover image link here"
-                />
+              {/* Cover Photo Section */}
+              <section className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                <label className="block text-xs font-black text-gray-500 mb-4 uppercase tracking-widest">Cover Photo</label>
+                <div className="flex flex-col gap-4">
+                  <div className="h-32 w-full rounded-xl overflow-hidden border-2 border-white shadow-md relative group">
+                    <img src={editCover} className="w-full h-full object-cover" alt="cover preview" />
+                    <button 
+                      onClick={() => coverInputRef.current?.click()}
+                      className="absolute inset-0 bg-black/20 group-hover:bg-black/40 flex items-center justify-center text-white transition-all"
+                    >
+                      <i className="fa-solid fa-camera text-xl"></i>
+                    </button>
+                  </div>
+                  <input 
+                    type="file" 
+                    ref={coverInputRef} 
+                    className="hidden" 
+                    accept="image/*" 
+                    onChange={(e) => handleFileChange(e, 'cover')} 
+                  />
+                  <button 
+                    onClick={() => coverInputRef.current?.click()}
+                    className="w-full py-2 bg-white border-2 border-green-100 text-green-700 rounded-xl font-bold text-sm hover:bg-green-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-upload"></i> Change Cover
+                  </button>
+                </div>
               </section>
               
               <section>
@@ -179,39 +231,39 @@ const Profile: React.FC<ProfileProps> = ({
                   type="text" 
                   value={editUsername} 
                   onChange={(e) => setEditUsername(e.target.value)} 
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 font-black text-gray-900 text-lg" 
-                  placeholder="Your name"
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-red-500 font-black text-gray-900 text-lg transition-all" 
+                  placeholder="Your Name"
                 />
               </section>
               
               <section>
-                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Intro Bio</label>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Bio (About You)</label>
                 <textarea 
                   value={editBio} 
                   onChange={(e) => setEditBio(e.target.value)} 
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 min-h-[80px] text-gray-900 font-bold" 
-                  placeholder="A bit about you..."
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-red-500 min-h-[100px] text-gray-900 font-bold transition-all" 
+                  placeholder="Tell the community about yourself..."
                 />
               </section>
               
               <section>
-                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Location</label>
+                <label className="block text-xs font-black text-gray-500 mb-2 uppercase tracking-widest">Current Location</label>
                 <input 
                   type="text" 
                   value={editLocation} 
                   onChange={(e) => setEditLocation(e.target.value)} 
-                  className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl outline-none focus:border-red-500 text-gray-900 font-bold" 
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-red-500 text-gray-900 font-bold transition-all" 
                   placeholder="City, Country"
                 />
               </section>
             </div>
             
-            <footer className="p-5 border-t bg-gray-50">
+            <footer className="p-5 border-t bg-white sticky bottom-0">
               <button 
                 onClick={handleSaveProfile} 
-                className="w-full bg-[#b71c1c] text-white py-4 rounded-2xl font-black text-lg shadow-xl hover:shadow-red-200 transition-all active:scale-[0.98]"
+                className="w-full bg-[#b71c1c] text-white py-4 rounded-2xl font-black text-lg shadow-xl hover:shadow-red-200 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
               >
-                Update Everything
+                <i className="fa-solid fa-cloud-arrow-up"></i> Save Profile Changes
               </button>
             </footer>
           </div>
