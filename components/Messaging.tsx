@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -13,8 +14,6 @@ interface MessagingProps {
   targetUser?: User | null;
 }
 
-const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3";
-
 const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
   const [activeChat, setActiveChat] = useState<User | null>(targetUser || null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -23,18 +22,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
   const [isSending, setIsSending] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'online' | 'error'>('connecting');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    audioRef.current = new Audio(NOTIFICATION_SOUND_URL);
-  }, []);
-
-  const playNotificationSound = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => console.log("Audio play blocked by browser. User must interact first."));
-    }
-  };
 
   // ইনবক্স লিস্ট এবং শেষ মেসেজ লোড করা
   const fetchInbox = async () => {
@@ -100,11 +87,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser }) => {
           const receiverId = String(newMsg.receiver_id);
 
           if (senderId === myId || receiverId === myId) {
-            // যদি মেসেজটি আপনার নিজের না হয়, তবে সাউন্ড বাজান
-            if (senderId !== myId) {
-              playNotificationSound();
-            }
-
             fetchInbox();
             if (activeChat) {
               const activeId = String(activeChat.id);

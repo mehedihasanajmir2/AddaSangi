@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppTab, Post, User, Story, ReactionType } from './types';
 import Feed from './components/Feed';
 import Profile from './components/Profile';
@@ -13,6 +13,7 @@ import Messaging from './components/Messaging';
 import { supabase } from './services/supabaseClient';
 
 const LOGO_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjbaxCAakhVQOly5IhXfPkpbunmcsxREDf2xali0fkLp9gK5qNdh2KL-UhEmDICRaX6_HtDBQTKM6jgtCJuTzrjpKUynSLe6NCzCvRpCs8C6dBgy2wGzEmcV-EIdxh5r73ExANoAyfIufc5JdfXfY1Xal6BSK0fdnqwK0VCkOZTfEdb_GMAiBB-aB9wedf0/s1600/Gemini_Generated_Image_pnxgvipnxgvipnxg.png";
+const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"; // Distinct magic chime sound
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -25,6 +26,20 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    audioRef.current = new Audio(NOTIFICATION_SOUND_URL);
+    audioRef.current.load();
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(e => console.log("Audio play blocked: interaction needed"));
+    }
+  }, []);
 
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
@@ -104,23 +119,30 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
-  // রিয়েল-টাইম মেসেজ নোটিফিকেশন লজিক
+  // গ্লোবাল রিয়েল-টাইম মেসেজ এবং সাউন্ড নোটিফিকেশন লজিক
   useEffect(() => {
     if (!currentUser) return;
     
-    const channel = supabase.channel('app_message_count')
+    const channel = supabase.channel('app_global_messages')
       .on('postgres_changes', { event: 'INSERT', table: 'messages' }, payload => {
-        // যদি মেসেজটি আপনার জন্য হয় এবং আপনি মেসেঞ্জার ট্যাবে না থাকেন
-        if (String(payload.new.receiver_id) === String(currentUser.id) && activeTab !== AppTab.MESSAGES) {
-          setUnreadMessagesCount(prev => prev + 1);
+        const msg = payload.new;
+        const myId = String(currentUser.id);
+        
+        // যদি মেসেজটি আপনার জন্য হয় এবং অন্য কেউ পাঠায়
+        if (String(msg.receiver_id) === myId && String(msg.sender_id) !== myId) {
+          playNotificationSound();
+          
+          // যদি বর্তমানে মেসেজ ট্যাবে না থাকেন, তাহলে কাউন্ট বাড়ান
+          if (activeTab !== AppTab.MESSAGES) {
+            setUnreadMessagesCount(prev => prev + 1);
+          }
         }
       })
       .subscribe();
       
     return () => { supabase.removeChannel(channel); };
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, playNotificationSound]);
 
-  // যখন মেসেঞ্জার ট্যাবে যাবে তখন কাউন্ট ০ হয়ে যাবে
   useEffect(() => {
     if (activeTab === AppTab.MESSAGES) {
       setUnreadMessagesCount(0);
