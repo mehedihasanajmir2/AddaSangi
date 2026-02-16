@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
@@ -70,7 +71,6 @@ const App: React.FC = () => {
 
       if (error) throw error;
 
-      // Update local state immediately
       setCurrentUser(prev => prev ? {
         ...prev,
         ...updates,
@@ -104,6 +104,29 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
+  // রিয়েল-টাইম মেসেজ নোটিফিকেশন লজিক
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const channel = supabase.channel('app_message_count')
+      .on('postgres_changes', { event: 'INSERT', table: 'messages' }, payload => {
+        // যদি মেসেজটি আপনার জন্য হয় এবং আপনি মেসেঞ্জার ট্যাবে না থাকেন
+        if (String(payload.new.receiver_id) === String(currentUser.id) && activeTab !== AppTab.MESSAGES) {
+          setUnreadMessagesCount(prev => prev + 1);
+        }
+      })
+      .subscribe();
+      
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUser, activeTab]);
+
+  // যখন মেসেঞ্জার ট্যাবে যাবে তখন কাউন্ট ০ হয়ে যাবে
+  useEffect(() => {
+    if (activeTab === AppTab.MESSAGES) {
+      setUnreadMessagesCount(0);
+    }
+  }, [activeTab]);
+
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) { setSearchResults([]); return; }
     try {
@@ -136,7 +159,7 @@ const App: React.FC = () => {
       if (error) throw error;
       alert("বন্ধু হিসেবে যোগ করা হয়েছে!");
     } catch (err: any) {
-      alert("সমস্যা হয়েছে: " + err.message + "\n\nনিশ্চিত করুন আপনার ডাটাবেসে 'friendships' টেবিলটি আছে।");
+      alert("সমস্যা হয়েছে: " + err.message);
     }
   };
 
@@ -225,8 +248,13 @@ const App: React.FC = () => {
             <i className="fa-solid fa-magnifying-glass"></i>
           </button>
           
-          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-10 h-10 rounded-full flex items-center justify-center ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}>
+          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-10 h-10 rounded-full flex items-center justify-center relative ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}>
             <i className="fa-solid fa-bolt"></i>
+            {unreadMessagesCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-bounce">
+                {unreadMessagesCount}
+              </span>
+            )}
           </button>
           <button onClick={() => setActiveTab(AppTab.PROFILE)} className="flex items-center gap-2 bg-gray-100 px-1 py-1 rounded-full border">
              <img src={currentUser.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
@@ -235,7 +263,13 @@ const App: React.FC = () => {
       </header>
 
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full pt-14">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={currentUser} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
+        <Sidebar 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab} 
+          user={currentUser} 
+          onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
+          unreadMessagesCount={unreadMessagesCount}
+        />
         <main className={`flex-1 min-w-0 ${activeTab === AppTab.MESSAGES ? 'p-0 md:px-2 md:py-4' : 'px-2 py-4'} overflow-x-hidden`}>
           <div className={`${activeTab === AppTab.MESSAGES ? 'max-w-full' : 'max-w-[700px]'} mx-auto h-full`}>
             {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={loadFeed} onRefresh={loadFeed} onPostCreate={loadFeed} onPostDelete={loadFeed} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
@@ -249,7 +283,12 @@ const App: React.FC = () => {
       </div>
 
       {activeTab !== AppTab.MESSAGES && (
-        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
+        <BottomNav 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab} 
+          onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
+          unreadMessagesCount={unreadMessagesCount}
+        />
       )}
     </div>
   );

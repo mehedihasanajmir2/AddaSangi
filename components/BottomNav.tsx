@@ -6,9 +6,10 @@ interface BottomNavProps {
   activeTab: AppTab;
   onTabChange: (tab: AppTab) => void;
   onProfileClick: () => void;
+  unreadMessagesCount?: number;
 }
 
-const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, onProfileClick }) => {
+const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, onProfileClick, unreadMessagesCount = 0 }) => {
   const tabs = [
     { id: AppTab.FEED, icon: 'fa-house', label: 'Home' },
     { id: AppTab.VIDEOS, icon: 'fa-video', label: 'Video' },
@@ -38,8 +39,11 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, onProfile
             >
               <div className="relative">
                 <i className={`fa-solid ${tab.icon} text-lg ${isActive ? 'scale-110' : ''}`}></i>
-                {/* Notification badges are only shown in the header now on mobile, 
-                    but we keep logic if we ever want specific indicators here */}
+                {tab.id === AppTab.MESSAGES && unreadMessagesCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white">
+                    {unreadMessagesCount}
+                  </span>
+                )}
               </div>
               <span className={`text-[9px] font-bold mt-0.5`}>{tab.label}</span>
               {isActive && (
