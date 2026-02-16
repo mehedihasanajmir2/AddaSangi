@@ -90,7 +90,7 @@ const App: React.FC = () => {
       receiver_id: targetId,
       status: 'accepted'
     });
-    // ফিরতি ফ্রেন্ডশিপ যাতে মিউচুয়াল হয়
+    
     await supabase.from('friendships').upsert({
       sender_id: targetId,
       receiver_id: currentUser.id,
@@ -166,8 +166,8 @@ const App: React.FC = () => {
 
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full pt-14">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={currentUser} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
-        <main className="flex-1 min-w-0 px-2 py-4 overflow-x-hidden">
-          <div className="max-w-[700px] mx-auto">
+        <main className={`flex-1 min-w-0 ${activeTab === AppTab.MESSAGES ? 'p-0 md:px-2 md:py-4' : 'px-2 py-4'} overflow-x-hidden`}>
+          <div className={`${activeTab === AppTab.MESSAGES ? 'max-w-full' : 'max-w-[700px]'} mx-auto h-full`}>
             {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={loadFeed} onRefresh={loadFeed} onPostCreate={loadFeed} onPostDelete={loadFeed} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
             {activeTab === AppTab.SEARCH && <SearchResults results={searchResults} query={searchQuery} onUserSelect={openChat} onAddFriend={handleAddFriend} />}
             {activeTab === AppTab.MESSAGES && <Messaging currentUser={currentUser} targetUser={selectedChatUser} />}
@@ -177,7 +177,11 @@ const App: React.FC = () => {
         </main>
         <ContactsSidebar currentUserId={currentUser.id} onContactClick={openChat} />
       </div>
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
+
+      {/* Conditional BottomNav - Hidden on Messages Tab for Mobile */}
+      {activeTab !== AppTab.MESSAGES && (
+        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
+      )}
     </div>
   );
 };
