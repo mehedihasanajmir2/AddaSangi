@@ -10,8 +10,6 @@ import Menu from './components/Menu';
 import BottomNav from './components/BottomNav';
 import SearchResults from './components/SearchResults';
 import Messaging from './components/Messaging';
-import Notifications from './components/Notifications';
-import { generateFeed } from './services/geminiService';
 import { supabase } from './services/supabaseClient';
 
 const LOGO_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjbaxCAakhVQOly5IhXfPkpbunmcsxREDf2xali0fkLp9gK5qNdh2KL-UhEmDICRaX6_HtDBQTKM6jgtCJuTzrjpKUynSLe6NCzCvRpCs8C6dBgy2wGzEmcV-EIdxh5r73ExANoAyfIufc5JdfXfY1Xal6BSK0fdnqwK0VCkOZTfEdb_GMAiBB-aB9wedf0/s1600/Gemini_Generated_Image_pnxgvipnxgvipnxg.png";
@@ -29,7 +27,10 @@ const App: React.FC = () => {
 
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
-    const { data: profile } = await supabase
+    
+    console.log("Fetching profile for:", userAuth.email);
+    
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userAuth.id)
@@ -38,22 +39,46 @@ const App: React.FC = () => {
     if (profile) {
       setCurrentUser({
         id: profile.id,
-        username: profile.full_name || 'User',
+        username: profile.full_name || userAuth.user_metadata?.full_name || 'AddaSangi User',
         avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
         coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
         bio: profile.bio,
-        email: profile.email,
+        email: profile.email || userAuth.email,
         location: profile.location
       });
+    } else {
+      // যদি প্রোফাইল না থাকে, তবে একটি ডিফল্ট প্রোফাইল তৈরি করুন
+      console.log("Profile missing. Creating a fallback profile...");
+      const fallbackUser: User = {
+        id: userAuth.id,
+        username: userAuth.user_metadata?.full_name || userAuth.email.split('@')[0],
+        avatar: `https://picsum.photos/seed/${userAuth.id}/200`,
+        email: userAuth.email
+      };
+      
+      // ডাটাবেসে সেভ করার চেষ্টা করুন
+      await supabase.from('profiles').upsert({
+        id: userAuth.id,
+        full_name: fallbackUser.username,
+        email: userAuth.email,
+        avatar_url: fallbackUser.avatar
+      });
+      
+      setCurrentUser(fallbackUser);
     }
   }, []);
 
   useEffect(() => {
     const init = async () => {
-      const { data: { session: s } } = await supabase.auth.getSession();
-      setSession(s);
-      if (s) await fetchProfile(s.user);
-      setLoadingSession(false);
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        setSession(s);
+        if (s) await fetchProfile(s.user);
+      } catch (err) {
+        console.error("Init Error:", err);
+      } finally {
+        setLoadingSession(false);
+      }
     };
     init();
 
@@ -101,6 +126,7 @@ const App: React.FC = () => {
   };
 
   const loadFeed = async () => {
+    if (!session) return;
     setLoading(true);
     const { data: dbPosts } = await supabase.from('posts').select(`*, profiles(*), reactions(*), comments(*, profiles(full_name))`).order('created_at', { ascending: false });
     if (dbPosts) {
@@ -118,16 +144,35 @@ const App: React.FC = () => {
     setLoading(false);
   };
 
-  useEffect(() => { if (session) loadFeed(); }, [session]);
+  useEffect(() => { if (session && currentUser) loadFeed(); }, [session, currentUser]);
 
   const openChat = (user: User) => {
     setSelectedChatUser(user);
     setActiveTab(AppTab.MESSAGES);
   };
 
-  if (loadingSession) return <div className="min-h-screen flex items-center justify-center"><img src={LOGO_URL} className="w-16 h-16 animate-pulse" /></div>;
+  // লোডিং স্টেটে সাদা স্ক্রিন এড়াতে
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <img src={LOGO_URL} className="w-20 h-20 animate-bounce mb-4" />
+        <p className="text-[#1b5e20] font-black animate-pulse">আড্ডাসঙ্গী লোড হচ্ছে...</p>
+      </div>
+    );
+  }
+
   if (!session) return <Login onLogin={() => {}} />;
-  if (!currentUser) return null;
+
+  // যদি সেশন থাকে কিন্তু প্রোফাইল সিঙ্ক হচ্ছে
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <div className="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-600 font-bold">আপনার প্রোফাইল সিঙ্ক করা হচ্ছে...</p>
+        <button onClick={() => window.location.reload()} className="mt-4 text-red-600 font-bold underline">কাজ না করলে রিলোড দিন</button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans">
@@ -178,7 +223,6 @@ const App: React.FC = () => {
         <ContactsSidebar currentUserId={currentUser.id} onContactClick={openChat} />
       </div>
 
-      {/* Conditional BottomNav - Hidden on Messages Tab for Mobile */}
       {activeTab !== AppTab.MESSAGES && (
         <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
       )}
