@@ -1,10 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Post, Comment, ReactionType } from '../types';
+import { Post, Comment, ReactionType, User } from '../types';
 
 interface PostCardProps {
   post: Post;
+  currentUser?: User;
   onLike: (reaction?: ReactionType) => void;
+  onDelete?: () => void;
 }
 
 const REACTION_CONFIG = [
@@ -18,17 +20,31 @@ const REACTION_CONFIG = [
 
 const QUICK_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍', '🔥', '🙌'];
 
-const PostCard: React.FC<PostCardProps> = ({ post, onLike }) => {
+const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onLike, onDelete }) => {
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const reactionTimeoutRef = useRef<number | null>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
 
   const [localComments, setLocalComments] = useState<Comment[]>([
     { id: 'c1', username: 'rahim_adda', text: 'Kopp bhai! 🔥', timestamp: '2m' },
     { id: 'c2', username: 'sumaiya_sangi', text: 'Beautiful view! ❤️', timestamp: '1m' }
   ]);
+
+  const isOwner = currentUser && post.user.id === currentUser.id;
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (optionsRef.current && !optionsRef.current.contains(event.target as Node)) {
+        setShowOptions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLikeClick = () => {
     if (post.userReaction) {
@@ -54,7 +70,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, onLike }) => {
     if (reactionTimeoutRef.current) {
       clearTimeout(reactionTimeoutRef.current);
     }
-    // We don't hide immediately to allow the user to move cursor to the reactions bar
   };
 
   const handleAddComment = (e: React.FormEvent) => {
@@ -62,7 +77,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onLike }) => {
     if (commentText.trim()) {
       const newComment: Comment = {
         id: Date.now().toString(),
-        username: 'Adda Master',
+        username: currentUser?.username || 'Guest',
         text: commentText,
         timestamp: 'Just now'
       };
@@ -96,9 +111,31 @@ const PostCard: React.FC<PostCardProps> = ({ post, onLike }) => {
             </div>
           </div>
         </div>
-        <button className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors">
-          <i className="fa-solid fa-ellipsis text-lg"></i>
-        </button>
+        
+        <div className="relative" ref={optionsRef}>
+          <button 
+            onClick={() => setShowOptions(!showOptions)}
+            className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <i className="fa-solid fa-ellipsis text-lg"></i>
+          </button>
+          
+          {showOptions && (
+            <div className="absolute right-0 top-10 w-48 bg-white shadow-xl rounded-xl border border-gray-100 z-50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
+              <button className="w-full text-left px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                <i className="fa-regular fa-bookmark w-4"></i> Save Post
+              </button>
+              {isOwner && (
+                <button 
+                  onClick={() => { onDelete?.(); setShowOptions(false); }}
+                  className="w-full text-left px-4 py-3 text-sm font-black text-red-600 hover:bg-red-50 flex items-center gap-3 border-t border-gray-50"
+                >
+                  <i className="fa-solid fa-trash-can w-4"></i> Delete Post
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Caption */}
@@ -175,7 +212,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onLike }) => {
         
         <button 
           onClick={() => setShowComments(!showComments)}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg hover:bg-gray-100 transition-colors ${showComments ? 'text-[#b71c1c]' : 'text-gray-600'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg hover:bg-gray-100 transition-colors ${showComments ? 'text-[#1b5e20]' : 'text-gray-600'}`}
         >
           <i className="fa-regular fa-message text-xl"></i>
           <span className="font-bold text-sm">Comment</span>
@@ -228,7 +265,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onLike }) => {
         )}
 
         <div className="flex items-center gap-2">
-          <img src="https://picsum.photos/seed/me/100" className="w-8 h-8 rounded-full border border-gray-100" alt="me" />
+          <img src={currentUser?.avatar || 'https://picsum.photos/seed/me/100'} className="w-8 h-8 rounded-full border border-gray-100" alt="me" />
           <form onSubmit={handleAddComment} className="flex-1 bg-gray-100 rounded-2xl flex items-center px-3.5 py-1.5 transition-all focus-within:bg-white focus-within:ring-2 focus-within:ring-gray-100 group">
             <input 
               type="text" 

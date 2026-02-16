@@ -41,7 +41,6 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.FEED);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isCalling, setIsCalling] = useState(false);
   
   const [viewingUser, setViewingUser] = useState<User>(DEFAULT_USER);
 
@@ -73,6 +72,7 @@ const App: React.FC = () => {
       id: session.user.id,
       username: metadata.full_name || fallbackUsername,
       avatar: metadata.avatar_url || `https://picsum.photos/seed/${session.user.id}/200`,
+      coverUrl: metadata.cover_url || undefined,
       bio: 'AddaSangi Member 🇧🇩',
       email: email,
       dob: metadata.dob,
@@ -95,6 +95,7 @@ const App: React.FC = () => {
           id: profile.id,
           username: profile.full_name || profile.username || tempUser.username,
           avatar: profile.avatar_url || tempUser.avatar,
+          coverUrl: profile.cover_url || tempUser.coverUrl,
           bio: profile.bio || tempUser.bio,
           dob: profile.dob || tempUser.dob,
           gender: profile.gender || tempUser.gender,
@@ -111,16 +112,58 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (session && posts.length === 0) {
+    if (session) {
       loadFeed();
     }
   }, [session]);
 
   const loadFeed = async () => {
     setLoading(true);
-    const newPosts = await generateFeed();
-    setPosts(newPosts);
-    setLoading(false);
+    try {
+      // 1. Fetch AI generated fun posts
+      const aiPosts = await generateFeed();
+      
+      // 2. Fetch real user posts from Supabase
+      const { data: dbPosts, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          profiles (
+            id,
+            full_name,
+            username,
+            avatar_url,
+            is_verified
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      let formattedDbPosts: Post[] = [];
+      if (dbPosts && !error) {
+        formattedDbPosts = dbPosts.map((p: any) => ({
+          id: p.id,
+          user: {
+            id: p.profiles?.id,
+            username: p.profiles?.full_name || p.profiles?.username || 'User',
+            avatar: p.profiles?.avatar_url || `https://picsum.photos/seed/${p.profiles?.id}/200`,
+            isVerified: p.profiles?.is_verified
+          },
+          caption: p.caption,
+          imageUrl: p.image_url,
+          likes: p.likes || 0,
+          comments: [],
+          timestamp: new Date(p.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+          userReaction: null
+        }));
+      }
+
+      // Merge real posts on top of AI posts
+      setPosts([...formattedDbPosts, ...aiPosts]);
+    } catch (err) {
+      console.error("Feed error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLike = (postId: string, reaction: ReactionType = 'like') => {
@@ -135,18 +178,64 @@ const App: React.FC = () => {
     }));
   };
 
-  const handlePostCreate = (caption: string) => {
+  const handlePostCreate = async (caption: string) => {
+    const tempImageUrl = `https://picsum.photos/seed/post-${Date.now()}/800/800`;
+    
+    // Optimistic Update UI
     const newPost: Post = {
-      id: `local-${Date.now()}`,
+      id: `temp-${Date.now()}`,
       user: currentUser,
       caption: caption,
-      imageUrl: `https://picsum.photos/seed/post-${Date.now()}/800/800`,
+      imageUrl: tempImageUrl,
       likes: 0,
       comments: [],
       timestamp: 'Just now',
       userReaction: null
     };
     setPosts([newPost, ...posts]);
+
+    // Save to Database Forever
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .insert({
+          user_id: currentUser.id,
+          caption: caption,
+          image_url: tempImageUrl,
+          likes: 0
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      // Refresh feed to get real ID
+      loadFeed();
+    } catch (err) {
+      console.error("Error saving post permanently:", err);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    // Only allow if it's not a mock post (id starts with 'user-' or 'temp-' usually)
+    if (postId.includes('user-')) {
+      // It's a mock post, just remove from UI
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', postId)
+        .eq('user_id', currentUser.id); // Security: only owner can delete
+
+      if (!error) {
+        setPosts(prev => prev.filter(p => p.id !== postId));
+      }
+    } catch (err) {
+      console.error("Delete failed", err);
+    }
   };
 
   const handleUpdateProfile = async (updates: Partial<User>) => {
@@ -164,6 +253,7 @@ const App: React.FC = () => {
           full_name: updates.username || currentUser.username,
           bio: updates.bio || currentUser.bio,
           avatar_url: updates.avatar || currentUser.avatar,
+          cover_url: updates.coverUrl || currentUser.coverUrl,
           location: updates.location || currentUser.location,
           gender: updates.gender || currentUser.gender,
           dob: updates.dob || currentUser.dob,
@@ -254,7 +344,17 @@ const App: React.FC = () => {
         <main className="flex-1 flex flex-col min-w-0">
           <div className={`${activeTab === AppTab.PROFILE ? 'w-full' : 'max-w-[680px]'} w-full mx-auto pb-24 md:pb-8 pt-4`}>
             {activeTab === AppTab.FEED && (
-              <Feed posts={posts} stories={MOCK_STORIES} loading={loading} onLike={handleLike} onRefresh={loadFeed} onPostCreate={handlePostCreate} onProfileClick={openMyProfile} />
+              <Feed 
+                posts={posts} 
+                stories={MOCK_STORIES} 
+                loading={loading} 
+                currentUser={currentUser}
+                onLike={handleLike} 
+                onRefresh={loadFeed} 
+                onPostCreate={handlePostCreate} 
+                onPostDelete={handleDeletePost}
+                onProfileClick={openMyProfile} 
+              />
             )}
             {activeTab === AppTab.VIDEOS && <VideoFeed posts={posts} loading={loading} onLike={handleLike} />}
             {activeTab === AppTab.PROFILE && (
@@ -264,7 +364,9 @@ const App: React.FC = () => {
                 isOwnProfile={viewingUser.id === currentUser.id}
                 onUpdateProfile={handleUpdateProfile}
                 onPostCreate={handlePostCreate}
+                onPostDelete={handleDeletePost}
                 onLike={handleLike}
+                currentUser={currentUser}
               />
             )}
             {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={handleLogout} onProfileClick={openMyProfile} />}

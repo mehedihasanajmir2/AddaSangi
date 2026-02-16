@@ -9,7 +9,9 @@ interface ProfileProps {
   isOwnProfile?: boolean;
   onUpdateProfile?: (updatedUser: Partial<User>) => void;
   onPostCreate?: (caption: string) => void;
+  onPostDelete?: (id: string) => void;
   onLike?: (id: string, reaction?: ReactionType) => void;
+  currentUser: User;
 }
 
 const Profile: React.FC<ProfileProps> = ({ 
@@ -18,7 +20,9 @@ const Profile: React.FC<ProfileProps> = ({
   isOwnProfile = false, 
   onUpdateProfile,
   onPostCreate,
-  onLike 
+  onPostDelete,
+  onLike,
+  currentUser
 }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPostingModalOpen, setIsPostingModalOpen] = useState(false);
@@ -124,12 +128,7 @@ const Profile: React.FC<ProfileProps> = ({
         if (type === 'avatar') {
           onUpdateProfile({ avatar: base64String });
         } else {
-          // Cover photo isn't explicitly in the User type, but we'll assume the parent handles it 
-          // or we can add it to the bio update trigger for simplicity in this demo environment.
-          // Ideally, User would have a cover_url.
-          onUpdateProfile({ bio: editBio }); // Just to trigger a refresh in the local state
-          // In a real app, you'd send this to Supabase storage
-          console.log('Cover photo selected:', file.name);
+          onUpdateProfile({ coverUrl: base64String });
         }
       };
       reader.readAsDataURL(file);
@@ -158,6 +157,8 @@ const Profile: React.FC<ProfileProps> = ({
     year: 'numeric'
   }) : null;
 
+  const displayCover = user.coverUrl || `https://picsum.photos/seed/cover-${user.id}/1200/400`;
+
   return (
     <div className="animate-in fade-in duration-300 bg-[#f0f2f5] min-h-screen">
       {/* Hidden File Inputs */}
@@ -179,13 +180,13 @@ const Profile: React.FC<ProfileProps> = ({
       {/* Header Section */}
       <div className="bg-white pb-4 shadow-sm">
         <div className="h-44 md:h-64 bg-gray-200 relative group overflow-hidden">
-          <img src={`https://picsum.photos/seed/cover-${user.id}/1200/400`} className="w-full h-full object-cover" alt="cover" />
+          <img src={displayCover} className="w-full h-full object-cover" alt="cover" />
           {isOwnProfile && (
             <button 
               onClick={() => triggerFileInput('cover')}
               className="absolute bottom-3 right-3 bg-white px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md hover:bg-gray-50 transition-all z-10"
             >
-              <i className="fa-solid fa-camera text-[#1b5e20]"></i> <span className="hidden md:inline">Edit Cover Photo</span>
+              <i className="fa-solid fa-camera text-[#1b5e20]"></i> <span className="hidden md:inline text-gray-800">Edit Cover Photo</span>
             </button>
           )}
         </div>
@@ -205,7 +206,7 @@ const Profile: React.FC<ProfileProps> = ({
             )}
           </div>
           
-          <div className="text-center md:text-left md:pb-3 flex-1 pt-4 md:pt-0">
+          <div className="text-center md:text-left md:pb-3 flex-1 pt-6 md:pt-0">
             <div className="flex items-center justify-center md:justify-start gap-2">
               <h2 className="text-2xl md:text-4xl font-black text-gray-900 leading-tight tracking-tight mt-1">{user.username}</h2>
               {user.isVerified && <i className="fa-solid fa-circle-check text-blue-500 text-xl"></i>}
@@ -284,9 +285,9 @@ const Profile: React.FC<ProfileProps> = ({
           {isOwnProfile && (
             <div className="bg-white p-4 shadow-sm md:rounded-xl">
               <div className="flex gap-3 mb-3">
-                <img src={user.avatar} className="w-10 h-10 rounded-full border shadow-sm" alt="" />
+                <img src={currentUser.avatar} className="w-10 h-10 rounded-full border shadow-sm" alt="" />
                 <button onClick={() => setIsPostingModalOpen(true)} className="flex-1 bg-gray-100 hover:bg-gray-200 transition-colors rounded-full text-left px-4 py-2 text-gray-500 font-medium">
-                  What's on your mind, {user.username.split(' ')[0]}?
+                  What's on your mind, {currentUser.username.split(' ')[0]}?
                 </button>
               </div>
             </div>
@@ -297,7 +298,15 @@ const Profile: React.FC<ProfileProps> = ({
               <h3 className="text-xl font-black text-gray-900">Posts</h3>
             </div>
             {posts.length > 0 ? (
-              posts.map(post => <PostCard key={post.id} post={post} onLike={(reaction) => onLike?.(post.id, reaction)} />)
+              posts.map(post => (
+                <PostCard 
+                  key={post.id} 
+                  post={post} 
+                  currentUser={currentUser}
+                  onLike={(reaction) => onLike?.(post.id, reaction)} 
+                  onDelete={() => onPostDelete?.(post.id)}
+                />
+              ))
             ) : (
               <div className="bg-white p-12 shadow-sm md:rounded-xl text-center text-gray-500 font-bold">No posts yet</div>
             )}
@@ -339,8 +348,8 @@ const Profile: React.FC<ProfileProps> = ({
                   <h4 className="font-black text-gray-900">Cover Photo</h4>
                   <button onClick={() => triggerFileInput('cover')} className="text-[#1b5e20] text-sm font-bold hover:underline">Edit</button>
                 </div>
-                <div className="h-20 bg-gray-100 rounded-lg overflow-hidden">
-                   <img src={`https://picsum.photos/seed/cover-${user.id}/1200/400`} className="w-full h-full object-cover" alt="" />
+                <div className="h-24 bg-gray-100 rounded-lg overflow-hidden">
+                   <img src={displayCover} className="w-full h-full object-cover" alt="" />
                 </div>
               </section>
 

@@ -7,13 +7,15 @@ interface FeedProps {
   posts: Post[];
   stories: Story[];
   loading: boolean;
+  currentUser: User;
   onLike: (id: string, reaction?: ReactionType) => void;
   onRefresh: () => void;
   onPostCreate: (caption: string) => void;
+  onPostDelete: (id: string) => void;
   onProfileClick: () => void;
 }
 
-const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh, onPostCreate, onProfileClick }) => {
+const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLike, onRefresh, onPostCreate, onPostDelete, onProfileClick }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newPostText, setNewPostText] = useState('');
 
@@ -31,7 +33,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
       <div className="bg-white p-4 shadow-sm md:rounded-xl">
         <div className="flex gap-3 mb-3">
           <img 
-            src="https://picsum.photos/seed/me/100" 
+            src={currentUser.avatar} 
             className="w-10 h-10 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
             alt="me" 
             onClick={onProfileClick}
@@ -40,7 +42,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
             onClick={() => setIsModalOpen(true)}
             className="flex-1 bg-gray-100 hover:bg-gray-200 transition-colors rounded-full text-left px-4 py-2 text-gray-500 text-sm md:text-base font-medium"
           >
-            What's on your mind, Master?
+            What's on your mind, {currentUser.username.split(' ')[0]}?
           </button>
         </div>
         <div className="border-t border-gray-100 pt-3 flex justify-between">
@@ -63,7 +65,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
             {i === 0 ? (
                <div className="absolute inset-0 flex flex-col">
                   <div className="h-2/3 bg-gray-100 overflow-hidden">
-                    <img src="https://picsum.photos/seed/me/100" className="w-full h-full object-cover" alt="" />
+                    <img src={currentUser.avatar} className="w-full h-full object-cover" alt="" />
                   </div>
                   <div className="h-1/3 bg-white flex flex-col items-center justify-center relative">
                     <div className="absolute -top-4 bg-[#1b5e20] text-white w-8 h-8 rounded-full flex items-center justify-center border-4 border-white group-hover:scale-110 transition-transform">
@@ -106,7 +108,12 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
         ) : (
           posts.map(post => (
             <div key={post.id} className="md:rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <PostCard post={post} onLike={(reaction) => onLike(post.id, reaction)} />
+              <PostCard 
+                post={post} 
+                currentUser={currentUser}
+                onLike={(reaction) => onLike(post.id, reaction)} 
+                onDelete={() => onPostDelete(post.id)}
+              />
             </div>
           ))
         )}
@@ -116,7 +123,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
             onClick={onRefresh}
             className="mx-4 md:mx-0 my-2 py-3 rounded-lg bg-white shadow-sm text-gray-600 font-bold text-sm active:bg-gray-50 border border-gray-200 transition-colors hover:bg-gray-50"
           >
-            See More Posts
+            Refresh Feed
           </button>
         )}
       </div>
@@ -138,9 +145,9 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
             
             <div className="p-4">
               <div className="flex items-center gap-3 mb-4">
-                <img src="https://picsum.photos/seed/me/100" className="w-10 h-10 rounded-full" alt="" />
+                <img src={currentUser.avatar} className="w-10 h-10 rounded-full" alt="" />
                 <div>
-                  <h4 className="font-bold text-sm text-gray-900">Adda Master</h4>
+                  <h4 className="font-bold text-sm text-gray-900">{currentUser.username}</h4>
                   <div className="bg-gray-100 px-2 py-0.5 rounded flex items-center gap-1 text-[10px] font-bold text-gray-600 w-fit">
                     <i className="fa-solid fa-users"></i> Friends <i className="fa-solid fa-caret-down"></i>
                   </div>
@@ -148,7 +155,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
               </div>
 
               <textarea
-                placeholder="What's on your mind, Master?"
+                placeholder={`What's on your mind, ${currentUser.username.split(' ')[0]}?`}
                 className="w-full min-h-[150px] resize-none border-none outline-none text-xl placeholder-gray-400 font-medium"
                 value={newPostText}
                 onChange={(e) => setNewPostText(e.target.value)}
@@ -168,7 +175,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, onLike, onRefresh,
               <button
                 onClick={handlePostSubmit}
                 disabled={!newPostText.trim()}
-                className={`w-full py-2.5 rounded-lg mt-4 font-bold transition-all shadow-md ${newPostText.trim() ? 'bg-[#b71c1c] text-white hover:bg-[#a01818]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                className={`w-full py-2.5 rounded-lg mt-4 font-bold transition-all shadow-md ${newPostText.trim() ? 'bg-[#1b5e20] text-white hover:bg-[#144d18]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
               >
                 Post Now
               </button>

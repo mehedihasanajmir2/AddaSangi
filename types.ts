@@ -3,6 +3,7 @@ export interface User {
   id: string;
   username: string;
   avatar: string;
+  coverUrl?: string; // New field for custom cover photos
   bio?: string;
   isVerified?: boolean;
   dob?: string;
