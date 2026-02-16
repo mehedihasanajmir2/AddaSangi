@@ -5,27 +5,51 @@ interface CallingOverlayProps {
   onClose: () => void;
 }
 
+const CALLING_TONE_URL = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3"; // Professional digital ringtone
+
 const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose }) => {
   const [isConnecting, setIsConnecting] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [callTime, setCallTime] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    // রিংটোন সেটআপ
+    ringtoneRef.current = new Audio(CALLING_TONE_URL);
+    ringtoneRef.current.loop = true;
+    
     let timer: any;
     const startCamera = async () => {
       try {
+        // কলিং সাউন্ড শুরু
+        if (ringtoneRef.current) {
+          ringtoneRef.current.play().catch(e => console.log("Audio play blocked: interaction needed"));
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
-        setIsConnecting(false);
-        timer = setInterval(() => setCallTime(prev => prev + 1), 1000);
+
+        // সিমুলেটেড কানেকশন টাইমআউট (৩ সেকেন্ড পর সাউন্ড বন্ধ হয়ে কল শুরু হবে)
+        setTimeout(() => {
+          setIsConnecting(false);
+          if (ringtoneRef.current) {
+            ringtoneRef.current.pause();
+            ringtoneRef.current.currentTime = 0;
+          }
+          timer = setInterval(() => setCallTime(prev => prev + 1), 1000);
+        }, 3000);
+
       } catch (err) {
         console.error("Error accessing media:", err);
         setIsConnecting(false);
+        if (ringtoneRef.current) {
+          ringtoneRef.current.pause();
+        }
       }
     };
 
@@ -34,6 +58,10 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose }) => {
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current = null;
       }
       clearInterval(timer);
     };
@@ -51,17 +79,24 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose }) => {
       <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
         <div className="flex flex-col items-center gap-6">
           <div className="relative">
-            <div className="w-36 h-36 rounded-full overflow-hidden border-4 border-green-500">
+            <div className={`w-36 h-36 rounded-full overflow-hidden border-4 ${isConnecting ? 'border-red-500 animate-pulse' : 'border-green-500'}`}>
                 <img src="https://picsum.photos/seed/sangi-bot/400" className="w-full h-full object-cover" alt="AddaSangi Bot" />
             </div>
-            <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full flex items-center justify-center border-4 border-gray-900">
-                <i className="fa-solid fa-bolt text-white text-xs"></i>
+            <div className={`absolute -bottom-2 -right-2 ${isConnecting ? 'bg-red-500' : 'bg-green-500'} w-8 h-8 rounded-full flex items-center justify-center border-4 border-gray-900`}>
+                <i className={`fa-solid ${isConnecting ? 'fa-phone-volume animate-bounce' : 'fa-bolt'} text-white text-xs`}></i>
             </div>
           </div>
           <div className="text-center">
             <h2 className="text-3xl font-black mb-1">Sangi AI</h2>
             {isConnecting ? (
-              <span className="text-red-500 font-bold uppercase tracking-widest text-xs">Connecting...</span>
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-red-500 font-bold uppercase tracking-widest text-xs">Calling...</span>
+                <div className="flex gap-1">
+                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-bounce delay-75"></div>
+                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-bounce delay-150"></div>
+                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-bounce delay-300"></div>
+                </div>
+              </div>
             ) : (
               <span className="text-green-500 font-mono text-lg font-bold">{formatTime(callTime)}</span>
             )}
