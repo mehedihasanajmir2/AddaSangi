@@ -2,277 +2,236 @@
 import React, { useState, useEffect } from 'react';
 import { AppTab, Post, User, Story, ReactionType } from './types';
 import Feed from './components/Feed';
-import Messaging from './components/Messaging';
-import Notifications from './components/Notifications';
-import BottomNav from './components/BottomNav';
 import Profile from './components/Profile';
 import Login from './components/Login';
 import Sidebar from './components/Sidebar';
 import ContactsSidebar from './components/ContactsSidebar';
 import VideoFeed from './components/VideoFeed';
 import Menu from './components/Menu';
+import BottomNav from './components/BottomNav';
+import SearchResults from './components/SearchResults';
+import Messaging from './components/Messaging';
+import Notifications from './components/Notifications';
 import { generateFeed } from './services/geminiService';
 import { supabase } from './services/supabaseClient';
 
 const LOGO_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjbaxCAakhVQOly5IhXfPkpbunmcsxREDf2xali0fkLp9gK5qNdh2KL-UhEmDICRaX6_HtDBQTKM6jgtCJuTzrjpKUynSLe6NCzCvRpCs8C6dBgy2wGzEmcV-EIdxh5r73ExANoAyfIufc5JdfXfY1Xal6BSK0fdnqwK0VCkOZTfEdb_GMAiBB-aB9wedf0/s1600/Gemini_Generated_Image_pnxgvipnxgvipnxg.png";
 
-const DEFAULT_USER: User = {
-  id: 'me',
-  username: 'Adda Sangi User',
-  avatar: 'https://picsum.photos/seed/me/200',
-  bio: 'Welcome to AddaSangi! Start sharing your stories.'
-};
-
-const MOCK_STORIES: Story[] = Array.from({ length: 6 }).map((_, i) => ({
-  id: `story-${i}`,
-  user: {
-    id: `user-${i}`,
-    username: i === 0 ? 'Create Story' : `Sangi ${i}`,
-    avatar: `https://picsum.photos/seed/member_${i}/200`,
-  },
-  imageUrl: `https://picsum.photos/seed/story-content-${i}/400/700`,
-}));
-
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loadingSession, setLoadingSession] = useState(true);
-  const [currentUser, setCurrentUser] = useState<User>(DEFAULT_USER);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.FEED);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
-  const [viewingUser, setViewingUser] = useState<User>(DEFAULT_USER);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    const initAuth = async () => {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (currentSession) {
-        setSession(currentSession);
-        await fetchAndSetUser(currentSession);
+    const init = async () => {
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (s) {
+        setSession(s);
+        await fetchProfile(s.user.id);
       }
       setLoadingSession(false);
     };
+    init();
 
-    initAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      if (session) {
-        await fetchAndSetUser(session);
-      } else {
-        setCurrentUser(DEFAULT_USER);
-        setViewingUser(DEFAULT_USER);
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
+      setSession(s);
+      if (s) await fetchProfile(s.user.id);
+      else setCurrentUser(null);
       setLoadingSession(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchAndSetUser = async (session: any) => {
-    if (!session?.user) return;
-    
-    // ১. প্রোফাইল থেকে রিয়েল ডাটা ফেচ করা
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single();
-
-    if (profile && !error) {
-      const dbUser: User = {
+  const fetchProfile = async (uid: string) => {
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).single();
+    if (profile) {
+      setCurrentUser({
         id: profile.id,
         username: profile.full_name || 'User',
         avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
         coverUrl: profile.cover_url,
         bio: profile.bio,
-        dob: profile.dob,
+        email: session?.user?.email,
+        location: profile.location,
         gender: profile.gender,
-        email: session.user.email,
-        location: profile.location || 'Dhaka, Bangladesh',
-        lastNameChangeDate: profile.last_name_change_at
-      };
-      setCurrentUser(dbUser);
-      setViewingUser(dbUser);
-    } else {
-      // প্রোফাইল না থাকলে নতুন প্রোফাইল তৈরি (First time login)
-      const metadata = session.user.user_metadata || {};
-      const newUser: User = {
-        id: session.user.id,
-        username: metadata.full_name || session.user.email.split('@')[0],
-        avatar: metadata.avatar_url || `https://picsum.photos/seed/${session.user.id}/200`,
-        bio: 'AddaSangi Member 🇧🇩',
-        email: session.user.email,
-        location: 'Dhaka, Bangladesh'
-      };
-      setCurrentUser(newUser);
-      setViewingUser(newUser);
-      
-      await supabase.from('profiles').upsert({
-        id: newUser.id,
-        full_name: newUser.username,
-        avatar_url: newUser.avatar,
-        bio: newUser.bio,
-        location: newUser.location
+        dob: profile.dob
       });
     }
   };
 
   useEffect(() => {
-    if (session) {
-      loadFeed();
-    }
+    if (session) loadFeed();
   }, [session]);
 
   const loadFeed = async () => {
     setLoading(true);
     try {
-      // ১. ডাটাবেস থেকে রিয়েল পোস্ট লোড করা
       const { data: dbPosts, error } = await supabase
         .from('posts')
-        .select('*, profiles(id, full_name, avatar_url)')
+        .select(`
+          *,
+          profiles (id, full_name, avatar_url),
+          reactions (id, type, user_id),
+          comments (id, content, created_at, profiles (full_name))
+        `)
         .order('created_at', { ascending: false });
 
-      let formattedRealPosts: Post[] = [];
-      if (dbPosts && !error) {
-        formattedRealPosts = dbPosts.map((p: any) => ({
+      if (dbPosts) {
+        const formatted: Post[] = dbPosts.map((p: any) => ({
           id: p.id,
           user: {
             id: p.profiles?.id,
-            username: p.profiles?.full_name || 'User',
+            username: p.profiles?.full_name || 'Anonymous',
             avatar: p.profiles?.avatar_url || `https://picsum.photos/seed/${p.profiles?.id}/200`,
           },
           caption: p.caption,
           imageUrl: p.image_url,
-          likes: p.likes || 0,
-          comments: [],
-          timestamp: new Date(p.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+          likes: p.reactions?.length || 0,
+          userReaction: p.reactions?.find((r: any) => r.user_id === session?.user?.id)?.type || null,
+          comments: p.comments?.map((c: any) => ({
+            id: c.id,
+            username: c.profiles?.full_name || 'User',
+            text: c.content,
+            timestamp: new Date(c.created_at).toLocaleTimeString()
+          })) || [],
+          timestamp: new Date(p.created_at).toLocaleDateString()
         }));
+        
+        const aiPosts = await generateFeed();
+        setPosts([...formatted, ...aiPosts]);
       }
-
-      // ২. কিছু AI পোস্ট ও সাথে রাখা
-      const aiPosts = await generateFeed();
-      setPosts([...formattedRealPosts, ...aiPosts]);
     } catch (err) {
-      console.error("Feed loading failed:", err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
   const handlePostCreate = async (caption: string) => {
-    const tempImageUrl = `https://picsum.photos/seed/post-${Date.now()}/800/800`;
-    
-    try {
-      // সুপাবেসে পারমানেন্টলি সেভ করা
-      const { error } = await supabase.from('posts').insert({
-        user_id: currentUser.id,
-        caption: caption,
-        image_url: tempImageUrl,
-        likes: 0
-      });
+    if (!currentUser) return;
+    const { data, error } = await supabase.from('posts').insert({
+      user_id: currentUser.id,
+      caption: caption,
+      image_url: `https://picsum.photos/seed/post-${Date.now()}/800/800`
+    }).select().single();
 
-      if (!error) {
-        await loadFeed(); // রিলোড ফিড
-      }
-    } catch (err) {
-      console.error("Post creation failed:", err);
-    }
+    if (!error) await loadFeed();
   };
 
-  const handleDeletePost = async (postId: string) => {
-    try {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', postId)
-        .eq('user_id', currentUser.id);
-
-      if (!error) {
-        setPosts(prev => prev.filter(p => p.id !== postId));
-      }
-    } catch (err) {
-      console.error("Delete failed:", err);
+  const handleLike = async (postId: string, reaction: ReactionType) => {
+    if (!currentUser) return;
+    
+    if (reaction === null) {
+      await supabase.from('reactions').delete().eq('post_id', postId).eq('user_id', currentUser.id);
+    } else {
+      await supabase.from('reactions').upsert({
+        post_id: postId,
+        user_id: currentUser.id,
+        type: reaction
+      });
     }
+    await loadFeed();
   };
 
   const handleUpdateProfile = async (updates: Partial<User>) => {
-    const updatedUser = { ...currentUser, ...updates };
-    setCurrentUser(updatedUser);
-    
-    try {
-      await supabase.from('profiles').upsert({
-        id: currentUser.id,
-        full_name: updates.username || currentUser.username,
-        bio: updates.bio || currentUser.bio,
-        avatar_url: updates.avatar || currentUser.avatar,
-        cover_url: updates.coverUrl || currentUser.coverUrl,
-        location: updates.location || currentUser.location,
-        gender: updates.gender || currentUser.gender,
-        dob: updates.dob || currentUser.dob,
-        last_name_change_at: updates.lastNameChangeDate || currentUser.lastNameChangeDate
-      });
-    } catch (err) {
-      console.error("Profile sync error:", err);
-    }
+    if (!currentUser) return;
+    const { error } = await supabase.from('profiles').upsert({
+      id: currentUser.id,
+      full_name: updates.username || currentUser.username,
+      bio: updates.bio || currentUser.bio,
+      avatar_url: updates.avatar || currentUser.avatar,
+      cover_url: updates.coverUrl || currentUser.coverUrl,
+      location: updates.location || currentUser.location,
+      gender: updates.gender || currentUser.gender,
+      dob: updates.dob || currentUser.dob
+    });
+    if (!error) await fetchProfile(currentUser.id);
   };
 
-  const handleLike = (postId: string, reaction: ReactionType = 'like') => {
-    setPosts(prev => prev.map(p => {
-      if (p.id !== postId) return p;
-      const isRemoving = reaction === null;
-      const wasLiked = !!p.userReaction;
-      let newLikes = p.likes;
-      if (wasLiked && isRemoving) newLikes--;
-      if (!wasLiked && !isRemoving) newLikes++;
-      return { ...p, userReaction: reaction, likes: newLikes };
-    }));
-  };
-
-  if (loadingSession) {
-    return (
-      <div className="min-h-screen bg-[#f0f2f5] flex flex-col items-center justify-center">
-        <img src={LOGO_URL} alt="AddaSangi" className="w-20 h-20 animate-pulse mb-4" />
-        <h1 className="text-3xl font-black"><span className="text-[#b71c1c]">Adda</span><span className="text-[#1b5e20]">Sangi</span></h1>
-      </div>
-    );
-  }
-
-  if (!session) return <Login onLogin={() => {}} />;
+  if (loadingSession) return <div className="min-h-screen flex items-center justify-center bg-white"><img src={LOGO_URL} className="w-16 animate-bounce" /></div>;
+  if (!session || !currentUser) return <Login onLogin={() => {}} />;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f0f2f5] font-sans text-gray-900 overflow-x-hidden">
-      <header className="fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm w-full h-14 md:h-16 flex items-center">
-        <div className="max-w-[1920px] mx-auto px-4 flex items-center w-full h-full relative">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab(AppTab.FEED)}>
-              <img src={LOGO_URL} alt="Logo" className="w-8 h-8 md:w-10 md:h-10 rounded-xl shadow-sm" />
-              <h1 className="text-lg md:text-2xl font-black tracking-tighter">
-                <span className="text-[#b71c1c]">Adda</span><span className="text-[#1b5e20]">Sangi</span>
-              </h1>
-            </div>
+    <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans">
+      {/* IMPROVED DESKTOP HEADER */}
+      <header className="fixed top-0 left-0 right-0 h-14 bg-white border-b z-50 flex items-center px-4 shadow-sm">
+        <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveTab(AppTab.FEED)}>
+            <img src={LOGO_URL} className="w-8 h-8 rounded-lg" alt="logo" />
+            <h1 className="text-xl font-black hidden sm:block"><span className="text-[#b71c1c]">Adda</span><span className="text-[#1b5e20]">Sangi</span></h1>
           </div>
-          <div className="flex-1 flex justify-end">
-            <button onClick={async () => { await supabase.auth.signOut(); setSession(null); }} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:text-red-600 transition-all">
-              <i className="fa-solid fa-right-from-bracket"></i>
-            </button>
+          {/* SEARCH BOX FOR DESKTOP */}
+          <div className="ml-4 relative hidden md:block w-full max-w-[280px]">
+            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            <input 
+              type="text" 
+              placeholder="Search AddaSangi" 
+              className="w-full bg-gray-100 rounded-full py-2 pl-10 pr-4 outline-none focus:bg-white focus:ring-1 focus:ring-gray-200 transition-all text-sm"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (activeTab !== AppTab.SEARCH) setActiveTab(AppTab.SEARCH);
+              }}
+              onFocus={() => setActiveTab(AppTab.SEARCH)}
+            />
           </div>
+        </div>
+
+        {/* CENTER NAVIGATION ICONS (DESKTOP) */}
+        <nav className="hidden lg:flex flex-1 justify-center items-center h-full gap-2">
+           {[
+             { id: AppTab.FEED, icon: 'fa-house' },
+             { id: AppTab.VIDEOS, icon: 'fa-video' },
+             { id: AppTab.SEARCH, icon: 'fa-users' },
+           ].map(tab => (
+             <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-24 h-full flex items-center justify-center transition-all border-b-4 ${activeTab === tab.id ? 'border-[#b71c1c] text-[#b71c1c]' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
+             >
+               <i className={`fa-solid ${tab.icon} text-xl`}></i>
+             </button>
+           ))}
+        </nav>
+
+        <div className="flex items-center justify-end flex-1 gap-2">
+          <button className="w-10 h-10 bg-gray-100 rounded-full hidden sm:flex items-center justify-center text-gray-700 hover:bg-gray-200 transition-colors">
+            <i className="fa-solid fa-bell"></i>
+          </button>
+          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className="w-10 h-10 bg-gray-100 rounded-full hidden sm:flex items-center justify-center text-gray-700 hover:bg-gray-200 transition-colors">
+            <i className="fa-solid fa-comment"></i>
+          </button>
+          <div className="flex items-center gap-2 ml-2 cursor-pointer" onClick={() => setActiveTab(AppTab.PROFILE)}>
+            <img src={currentUser.avatar} className="w-8 h-8 rounded-full border" alt="me" />
+            <span className="font-bold text-sm hidden lg:block">{currentUser.username.split(' ')[0]}</span>
+          </div>
+          <button onClick={() => supabase.auth.signOut()} className="w-9 h-9 bg-gray-100 rounded-full text-gray-500 hover:text-red-600 ml-2">
+            <i className="fa-solid fa-right-from-bracket"></i>
+          </button>
         </div>
       </header>
 
-      <div className="flex-1 flex w-full max-w-[1400px] mx-auto relative h-full pt-14 md:pt-16">
+      <div className="flex-1 flex max-w-[1400px] mx-auto w-full pt-14">
+        {/* SIDEBAR ON LEFT */}
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} user={currentUser} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
-        <main className="flex-1 flex flex-col min-w-0">
-          <div className={`${activeTab === AppTab.PROFILE ? 'w-full' : 'max-w-[680px]'} w-full mx-auto pb-24 md:pb-8 pt-4`}>
+        
+        <main className="flex-1 min-w-0 px-2 py-4">
+          <div className={`${activeTab === AppTab.PROFILE ? 'max-w-none' : 'max-w-[680px]'} mx-auto`}>
             {activeTab === AppTab.FEED && (
               <Feed 
                 posts={posts} 
-                stories={MOCK_STORIES} 
+                stories={[]} 
                 loading={loading} 
-                currentUser={currentUser}
+                currentUser={currentUser} 
                 onLike={handleLike} 
                 onRefresh={loadFeed} 
                 onPostCreate={handlePostCreate} 
-                onPostDelete={handleDeletePost}
+                onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} 
                 onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
               />
             )}
@@ -280,20 +239,27 @@ const App: React.FC = () => {
               <Profile 
                 user={currentUser} 
                 posts={posts.filter(p => p.user.id === currentUser.id)} 
-                isOwnProfile={true}
-                onUpdateProfile={handleUpdateProfile}
-                onPostCreate={handlePostCreate}
-                onPostDelete={handleDeletePost}
-                onLike={handleLike}
-                currentUser={currentUser}
+                isOwnProfile={true} 
+                onUpdateProfile={handleUpdateProfile} 
+                onPostCreate={handlePostCreate} 
+                onPostDelete={async (id) => { await supabase.from('posts').delete().eq('id', id); loadFeed(); }} 
+                onLike={handleLike} 
+                currentUser={currentUser} 
               />
             )}
             {activeTab === AppTab.VIDEOS && <VideoFeed posts={posts} loading={loading} onLike={handleLike} />}
-            {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={async () => { await supabase.auth.signOut(); setSession(null); }} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
+            {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
+            {activeTab === AppTab.SEARCH && <SearchResults results={[]} query={searchQuery} onUserSelect={() => {}} />}
+            {activeTab === AppTab.MESSAGES && <Messaging />}
+            {activeTab === AppTab.NOTIFICATIONS && <Notifications />}
           </div>
         </main>
-        <ContactsSidebar onContactClick={(u) => { setViewingUser(u); setActiveTab(AppTab.PROFILE); }} />
+
+        {/* CONTACTS SIDEBAR ON RIGHT */}
+        <ContactsSidebar onContactClick={(u) => { setActiveTab(AppTab.PROFILE); }} />
       </div>
+      
+      {/* BOTTOM NAV ONLY FOR MOBILE */}
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
     </div>
   );

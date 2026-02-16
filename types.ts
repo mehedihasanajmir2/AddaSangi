@@ -3,14 +3,14 @@ export interface User {
   id: string;
   username: string;
   avatar: string;
-  coverUrl?: string; // New field for custom cover photos
+  coverUrl?: string;
   bio?: string;
   isVerified?: boolean;
   dob?: string;
   gender?: string;
   email?: string;
   location?: string;
-  lastNameChangeDate?: string; // ISO string
+  lastNameChangeDate?: string;
 }
 
 export type ReactionType = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry' | null;
@@ -20,8 +20,7 @@ export interface Post {
   user: User;
   imageUrl: string;
   caption: string;
-  likes: number; // For backward compatibility or primary count
-  reactions?: Record<string, number>;
+  likes: number; 
   userReaction?: ReactionType;
   comments: Comment[];
   timestamp: string;
@@ -30,6 +29,7 @@ export interface Post {
 
 export interface Comment {
   id: string;
+  user_id: string;
   username: string;
   text: string;
   timestamp: string;
@@ -39,16 +39,9 @@ export interface Story {
   id: string;
   user: User;
   imageUrl: string;
-  hasSeen?: boolean;
 }
 
-export interface Message {
-  id: string;
-  senderId: string;
-  text: string;
-  timestamp: number;
-}
-
+// Added Chat interface for messaging component
 export interface Chat {
   id: string;
   user: User;
@@ -56,6 +49,7 @@ export interface Chat {
   unreadCount: number;
 }
 
+// Added Notification interface for notification component
 export interface Notification {
   id: string;
   user: User;
@@ -69,8 +63,8 @@ export enum AppTab {
   FEED = 'feed',
   SEARCH = 'search',
   VIDEOS = 'videos',
-  MESSAGES = 'messages',
-  NOTIFICATIONS = 'notifications',
   PROFILE = 'profile',
-  MENU = 'menu'
+  MENU = 'menu',
+  MESSAGES = 'messages',
+  NOTIFICATIONS = 'notifications'
 }
