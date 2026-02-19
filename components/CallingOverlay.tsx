@@ -14,6 +14,13 @@ interface CallingOverlayProps {
 const CALLING_TONE_URL = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3"; 
 const INCOMING_TONE_URL = "https://assets.mixkit.co/active_storage/sfx/1352/1352-preview.mp3";
 
+const iceServers = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ],
+};
+
 const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 'video', targetUser, isIncoming = false, currentUser }) => {
   const [callStatus, setCallStatus] = useState<'ringing' | 'connected' | 'ended'>('ringing');
   const [isMuted, setIsMuted] = useState(false);
@@ -23,16 +30,51 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   const [mediaError, setMediaError] = useState<string | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
   const toneRef = useRef<HTMLAudioElement | null>(null);
 
+  // Initialize WebRTC Peer Connection
+  const createPeerConnection = () => {
+    const pc = new RTCPeerConnection(iceServers);
+    
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendSignalingMessage({ type: 'candidate', candidate: event.candidate });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    pcRef.current = pc;
+    return pc;
+  };
+
+  const sendSignalingMessage = (payload: any) => {
+    const channel = supabase.channel(`calls:${targetUser.id}`);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.send({
+          type: 'broadcast',
+          event: 'webrtc_signal',
+          payload: { ...payload, from: currentUser.id }
+        });
+      }
+    });
+  };
+
   useEffect(() => {
-    // রিংটোন সেটআপ
     toneRef.current = new Audio(isIncoming ? INCOMING_TONE_URL : CALLING_TONE_URL);
     toneRef.current.loop = true;
     toneRef.current.play().catch(() => console.log("Audio play blocked"));
 
-    // সিগন্যালিং লিসেনার (এক্সেপ্ট বা রিজেক্ট শোনার জন্য)
+    const pc = createPeerConnection();
+
     const channel = supabase.channel(`calls:${currentUser.id}`)
       .on('broadcast', { event: 'call_accepted' }, () => {
         setCallStatus('connected');
@@ -40,27 +82,45 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
       .on('broadcast', { event: 'call_ended' }, () => {
         handleEndCall();
       })
+      .on('broadcast', { event: 'webrtc_signal' }, async ({ payload }) => {
+        if (!pcRef.current) return;
+        
+        if (payload.type === 'offer') {
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
+          const answer = await pcRef.current.createAnswer();
+          await pcRef.current.setLocalDescription(answer);
+          sendSignalingMessage({ type: 'answer', answer });
+        } else if (payload.type === 'answer') {
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        } else if (payload.type === 'candidate') {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+        }
+      })
       .subscribe();
 
     const startMedia = async () => {
       try {
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ 
-            video: initialType === 'video', 
-            audio: true 
-          });
-        } catch (err: any) {
-          console.warn("Media failed, falling back to audio only");
-          setHasCamera(false);
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: initialType === 'video', 
+          audio: true 
+        });
         streamRef.current = stream;
-        if (videoRef.current && initialType === 'video' && stream.getVideoTracks().length > 0) {
+        
+        if (videoRef.current && initialType === 'video') {
           videoRef.current.srcObject = stream;
         }
+
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+        });
+
+        if (!isIncoming) {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          sendSignalingMessage({ type: 'offer', offer });
+        }
       } catch (err: any) {
-        console.error("Critical Media Error:", err);
+        console.error("Media Error:", err);
         setMediaError("ক্যামেরা/মাইক্রোফোন পারমিশন প্রয়োজন।");
       }
     };
@@ -91,6 +151,9 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
+    if (pcRef.current) {
+      pcRef.current.close();
+    }
     if (toneRef.current) {
       toneRef.current.pause();
       toneRef.current = null;
@@ -98,7 +161,6 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   };
 
   const handleAccept = async () => {
-    // ১. আগে স্ট্যাটাস এবং সিগন্যাল আপডেট করা (যাতে কল না কাটে)
     setCallStatus('connected');
     
     const channel = supabase.channel(`calls:${targetUser.id}`);
@@ -112,23 +174,20 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
       }
     });
 
-    // ২. তারপর ক্যামেরা অন করার চেষ্টা করা
     try {
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: initialType === 'video', audio: true });
-      } catch {
-        setHasCamera(false);
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: initialType === 'video', audio: true });
       streamRef.current = stream;
-      if (videoRef.current && initialType === 'video' && stream.getVideoTracks().length > 0) {
+      if (videoRef.current && initialType === 'video') {
         videoRef.current.srcObject = stream;
       }
+      if (pcRef.current) {
+        stream.getTracks().forEach(track => {
+          pcRef.current?.addTrack(track, stream);
+        });
+      }
     } catch (e) {
-      console.warn("Media could not be initialized after accept", e);
-      setMediaError("ডিভাইস অ্যাক্সেস করা সম্ভব হচ্ছে না, শুধু চ্যাট চলবে।");
-      // কল কাটবে না, শুধু চ্যাট মোড বা অডিও ছাড়াই কানেক্ট থাকবে।
+      console.warn("Media failed after accept", e);
+      setMediaError("ডিভাইস অ্যাক্সেস করা সম্ভব হচ্ছে না।");
     }
   };
 
@@ -151,12 +210,17 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
           <p className="text-[10px] font-black text-gray-400 uppercase mb-1">{callStatus === 'connected' ? 'In Call' : 'Calling'}</p>
           <p className="text-white font-mono font-bold">{formatTime(callTime)}</p>
         </div>
+        {/* Hidden remote audio for minimized state */}
+        <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
       </div>
     );
   }
 
   return (
     <div className="fixed inset-0 z-[500] bg-gray-950 text-white flex flex-col animate-in fade-in zoom-in duration-300 overflow-hidden">
+      {/* Hidden element to play remote audio/video */}
+      <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
+      
       <div className="absolute top-6 left-6 z-50">
         <button onClick={() => setIsMinimized(true)} className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20">
           <i className="fa-solid fa-minimize"></i>
@@ -190,7 +254,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
         </div>
       </div>
 
-      {initialType === 'video' && hasCamera && callStatus === 'connected' && (
+      {initialType === 'video' && callStatus === 'connected' && (
         <div className="absolute top-12 right-6 w-28 aspect-[3/4] rounded-2xl bg-black overflow-hidden border-2 border-white/20 shadow-2xl z-20">
           <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover transform -scale-x-100" />
         </div>
@@ -214,7 +278,16 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
           </>
         ) : (
           <>
-            <button onClick={() => setIsMuted(!isMuted)} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/10 border border-white/20 hover:bg-white/20'}`}>
+            <button 
+              onClick={() => {
+                const audioTrack = streamRef.current?.getAudioTracks()[0];
+                if (audioTrack) {
+                  audioTrack.enabled = !audioTrack.enabled;
+                  setIsMuted(!audioTrack.enabled);
+                }
+              }} 
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/10 border border-white/20 hover:bg-white/20'}`}
+            >
               <i className={`fa-solid ${isMuted ? 'fa-microphone-slash' : 'fa-microphone'} text-xl`}></i>
             </button>
             <button onClick={handleEndCall} className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center shadow-2xl shadow-red-600/50 active:scale-90 hover:bg-red-700 transition-all border-4 border-white/10">

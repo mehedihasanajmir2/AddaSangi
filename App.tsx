@@ -7,7 +7,7 @@ import Login from './components/Login';
 import Sidebar from './components/Sidebar';
 import ContactsSidebar from './components/ContactsSidebar';
 import Menu from './components/Menu';
-import BottomNav from './components/BottomNav';
+import TopNav from './components/TopNav';
 import SearchResults from './components/SearchResults';
 import Messaging from './components/Messaging';
 import CallingOverlay from './components/CallingOverlay';
@@ -28,7 +28,6 @@ const App: React.FC = () => {
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   
-  // কলিং স্টেট
   const [isCalling, setIsCalling] = useState(false);
   const [callType, setCallType] = useState<'audio' | 'video'>('video');
   const [callingUser, setCallingUser] = useState<User | null>(null);
@@ -85,10 +84,8 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
-  // ইনকামিং কল সিগন্যাল লিসেনার
   useEffect(() => {
     if (!currentUser) return;
-
     const signalChannel = supabase.channel(`calls:${currentUser.id}`)
       .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
         if (!isCalling) {
@@ -104,7 +101,6 @@ const App: React.FC = () => {
         setIsIncoming(false);
       })
       .subscribe();
-
     return () => { supabase.removeChannel(signalChannel); };
   }, [currentUser, isCalling]);
 
@@ -127,10 +123,6 @@ const App: React.FC = () => {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, activeTab, playNotificationSound]);
-
-  useEffect(() => {
-    if (activeTab === AppTab.MESSAGES) setUnreadMessagesCount(0);
-  }, [activeTab]);
 
   const loadFeed = async () => {
     if (!session) return;
@@ -160,16 +152,10 @@ const App: React.FC = () => {
     setCallingUser(target);
     setIsIncoming(false);
     setIsCalling(true);
-    
-    // সিগন্যাল পাঠানো (যাকে কল দিচ্ছেন তাকে জানানো)
     const channel = supabase.channel(`calls:${target.id}`);
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        channel.send({
-          type: 'broadcast',
-          event: 'incoming_call',
-          payload: { caller: currentUser, callType: type }
-        });
+        channel.send({ type: 'broadcast', event: 'incoming_call', payload: { caller: currentUser, callType: type } });
       }
     });
   };
@@ -179,11 +165,7 @@ const App: React.FC = () => {
       const channel = supabase.channel(`calls:${callingUser.id}`);
       channel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          channel.send({
-            type: 'broadcast',
-            event: 'call_ended',
-            payload: { from: currentUser.id }
-          });
+          channel.send({ type: 'broadcast', event: 'call_ended', payload: { from: currentUser.id } });
         }
       });
     }
@@ -206,24 +188,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans relative">
-      {activeNotification && (
-        <div 
-          onClick={() => { setActiveTab(AppTab.MESSAGES); setActiveNotification(null); }}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] bg-white border-2 border-red-500 shadow-2xl p-4 rounded-2xl flex items-center gap-4 w-[95%] max-w-[400px] animate-in slide-in-from-top-10 duration-500 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
-        >
-          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
-             <i className="fa-solid fa-message text-red-600"></i>
-          </div>
-          <div className="flex-1 min-w-0">
-             <h4 className="font-black text-gray-900 text-sm truncate">{activeNotification.senderName}</h4>
-             <p className="text-xs text-gray-600 truncate">{activeNotification.text}</p>
-          </div>
-          <button onClick={(e) => { e.stopPropagation(); setActiveNotification(null); }} className="p-2 text-gray-400">
-             <i className="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-      )}
-
       <header className="fixed top-0 inset-x-0 h-14 bg-white border-b z-50 flex items-center px-4 shadow-sm">
         <div className="flex items-center gap-2 flex-1">
           <div className="cursor-pointer" onClick={() => setActiveTab(AppTab.FEED)}>
@@ -240,22 +204,22 @@ const App: React.FC = () => {
             />
           </div>
         </div>
-        <div className="flex-1 flex justify-end gap-2 items-center">
-          <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-10 h-10 rounded-full flex items-center justify-center relative ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}>
-            <i className="fa-solid fa-bolt"></i>
-            {unreadMessagesCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-bounce">
-                {unreadMessagesCount}
-              </span>
-            )}
-          </button>
+        <div className="flex justify-end items-center">
           <button onClick={() => setActiveTab(AppTab.PROFILE)} className="flex items-center gap-2 bg-gray-100 p-0.5 rounded-full border">
              <img src={currentUser.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
           </button>
         </div>
       </header>
 
-      <div className="flex-1 flex max-w-[1400px] mx-auto w-full pt-14">
+      {/* Top Navigation Bar - Now on top for both Mobile & Desktop */}
+      <TopNav 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab} 
+        onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
+        unreadMessagesCount={unreadMessagesCount}
+      />
+
+      <div className="flex-1 flex max-w-[1400px] mx-auto w-full pt-28">
         <Sidebar 
           activeTab={activeTab} 
           onTabChange={setActiveTab} 
@@ -276,22 +240,7 @@ const App: React.FC = () => {
       </div>
 
       {isCalling && callingUser && (
-        <CallingOverlay 
-          initialType={callType} 
-          targetUser={callingUser} 
-          isIncoming={isIncoming}
-          currentUser={currentUser}
-          onClose={endCall} 
-        />
-      )}
-
-      {activeTab !== AppTab.MESSAGES && (
-        <BottomNav 
-          activeTab={activeTab} 
-          onTabChange={setActiveTab} 
-          onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
-          unreadMessagesCount={unreadMessagesCount}
-        />
+        <CallingOverlay initialType={callType} targetUser={callingUser} isIncoming={isIncoming} currentUser={currentUser} onClose={endCall} />
       )}
     </div>
   );
