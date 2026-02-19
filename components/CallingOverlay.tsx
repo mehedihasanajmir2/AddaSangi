@@ -18,18 +18,17 @@ const iceServers = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
   ],
 };
 
 const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 'video', targetUser, isIncoming = false, currentUser }) => {
   const [callStatus, setCallStatus] = useState<'ringing' | 'connected' | 'ended'>('ringing');
   const [isMuted, setIsMuted] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
   const [callTime, setCallTime] = useState(0);
-  const [hasCamera, setHasCamera] = useState(true);
   const [mediaError, setMediaError] = useState<string | null>(null);
   
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -46,8 +45,11 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
     };
 
     pc.ontrack = (event) => {
+      console.log("Remote track received:", event.streams[0]);
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0];
+        // Force play remote stream to ensure audio works
+        remoteVideoRef.current.play().catch(e => console.error("Auto-play failed:", e));
       }
     };
 
@@ -69,12 +71,14 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   };
 
   useEffect(() => {
+    // Play Call Ringtone
     toneRef.current = new Audio(isIncoming ? INCOMING_TONE_URL : CALLING_TONE_URL);
     toneRef.current.loop = true;
-    toneRef.current.play().catch(() => console.log("Audio play blocked"));
+    toneRef.current.play().catch(() => console.log("Audio blocked by browser"));
 
     const pc = createPeerConnection();
 
+    // Listen for signaling messages
     const channel = supabase.channel(`calls:${currentUser.id}`)
       .on('broadcast', { event: 'call_accepted' }, () => {
         setCallStatus('connected');
@@ -85,20 +89,29 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
       .on('broadcast', { event: 'webrtc_signal' }, async ({ payload }) => {
         if (!pcRef.current) return;
         
-        if (payload.type === 'offer') {
-          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
-          const answer = await pcRef.current.createAnswer();
-          await pcRef.current.setLocalDescription(answer);
-          sendSignalingMessage({ type: 'answer', answer });
-        } else if (payload.type === 'answer') {
-          await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
-        } else if (payload.type === 'candidate') {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+        try {
+          if (payload.type === 'offer') {
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
+            // Receiver adds their tracks before answering
+            const stream = await navigator.mediaDevices.getUserMedia({ video: initialType === 'video', audio: true });
+            streamRef.current = stream;
+            stream.getTracks().forEach(track => pcRef.current?.addTrack(track, stream));
+            
+            const answer = await pcRef.current.createAnswer();
+            await pcRef.current.setLocalDescription(answer);
+            sendSignalingMessage({ type: 'answer', answer });
+          } else if (payload.type === 'answer') {
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+          } else if (payload.type === 'candidate') {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          }
+        } catch (e) {
+          console.error("Signaling Error:", e);
         }
       })
       .subscribe();
 
-    const startMedia = async () => {
+    const startCallAsCaller = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: initialType === 'video', 
@@ -106,27 +119,24 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
         });
         streamRef.current = stream;
         
-        if (videoRef.current && initialType === 'video') {
-          videoRef.current.srcObject = stream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
         }
 
         stream.getTracks().forEach(track => {
           pc.addTrack(track, stream);
         });
 
-        if (!isIncoming) {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          sendSignalingMessage({ type: 'offer', offer });
-        }
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignalingMessage({ type: 'offer', offer });
       } catch (err: any) {
-        console.error("Media Error:", err);
-        setMediaError("ক্যামেরা/মাইক্রোফোন পারমিশন প্রয়োজন।");
+        setMediaError("মাইক্রোফোন বা ক্যামেরা পারমিশন নেই।");
       }
     };
 
     if (!isIncoming) {
-      startMedia();
+      startCallAsCaller();
     }
 
     return () => {
@@ -138,10 +148,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   useEffect(() => {
     let timer: any;
     if (callStatus === 'connected') {
-      if (toneRef.current) {
-        toneRef.current.pause();
-        toneRef.current.currentTime = 0;
-      }
+      if (toneRef.current) toneRef.current.pause();
       timer = setInterval(() => setCallTime(prev => prev + 1), 1000);
     }
     return () => clearInterval(timer);
@@ -163,6 +170,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   const handleAccept = async () => {
     setCallStatus('connected');
     
+    // Notify caller that call is accepted
     const channel = supabase.channel(`calls:${targetUser.id}`);
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
@@ -173,22 +181,6 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
         });
       }
     });
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: initialType === 'video', audio: true });
-      streamRef.current = stream;
-      if (videoRef.current && initialType === 'video') {
-        videoRef.current.srcObject = stream;
-      }
-      if (pcRef.current) {
-        stream.getTracks().forEach(track => {
-          pcRef.current?.addTrack(track, stream);
-        });
-      }
-    } catch (e) {
-      console.warn("Media failed after accept", e);
-      setMediaError("ডিভাইস অ্যাক্সেস করা সম্ভব হচ্ছে না।");
-    }
   };
 
   const handleEndCall = () => {
@@ -202,77 +194,51 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (isMinimized) {
-    return (
-      <div onClick={() => setIsMinimized(false)} className="fixed bottom-20 right-4 z-[500] bg-gray-900 p-2 rounded-2xl shadow-2xl flex items-center gap-3 border border-red-500 cursor-pointer animate-in slide-in-from-right-10">
-        <img src={targetUser.avatar} className="w-12 h-12 rounded-full border-2 border-green-500" alt="" />
-        <div className="pr-2">
-          <p className="text-[10px] font-black text-gray-400 uppercase mb-1">{callStatus === 'connected' ? 'In Call' : 'Calling'}</p>
-          <p className="text-white font-mono font-bold">{formatTime(callTime)}</p>
-        </div>
-        {/* Hidden remote audio for minimized state */}
-        <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
-      </div>
-    );
-  }
-
   return (
-    <div className="fixed inset-0 z-[500] bg-gray-950 text-white flex flex-col animate-in fade-in zoom-in duration-300 overflow-hidden">
-      {/* Hidden element to play remote audio/video */}
-      <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
-      
-      <div className="absolute top-6 left-6 z-50">
-        <button onClick={() => setIsMinimized(true)} className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20">
-          <i className="fa-solid fa-minimize"></i>
-        </button>
-      </div>
+    <div className="fixed inset-0 z-[500] bg-gray-950 text-white flex flex-col animate-in fade-in duration-300 overflow-hidden">
+      {/* Remote Audio/Video Stream */}
+      <video 
+        ref={remoteVideoRef} 
+        autoPlay 
+        playsInline 
+        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${callStatus === 'connected' ? 'opacity-100' : 'opacity-0'}`} 
+      />
 
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
+      <div className={`absolute inset-0 flex flex-col items-center justify-center bg-gray-900/60 backdrop-blur-sm transition-all duration-500 z-10 ${callStatus === 'connected' ? 'bg-transparent backdrop-blur-0' : ''}`}>
         <div className="flex flex-col items-center gap-6">
           <div className="relative">
-            <div className={`w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden border-4 ${callStatus === 'connected' ? 'border-green-500 shadow-2xl shadow-green-500/20' : 'border-red-500 animate-pulse'}`}>
+            <div className={`w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden border-4 transition-all duration-500 ${callStatus === 'connected' ? 'scale-0 opacity-0' : 'border-red-500 shadow-2xl animate-pulse'}`}>
                 <img src={targetUser.avatar} className="w-full h-full object-cover" alt="" />
             </div>
-            {isIncoming && callStatus === 'ringing' && (
-              <div className="absolute -top-2 -right-2 bg-red-600 px-3 py-1 rounded-full text-[10px] font-black animate-bounce">
-                INCOMING
-              </div>
-            )}
           </div>
-          <div className="text-center">
-            <h2 className="text-3xl font-black mb-1 drop-shadow-lg">{targetUser.username}</h2>
+          <div className={`text-center transition-all ${callStatus === 'connected' ? 'fixed top-12 inset-x-0' : ''}`}>
+            <h2 className={`font-black drop-shadow-lg transition-all ${callStatus === 'connected' ? 'text-lg' : 'text-3xl mb-1'}`}>{targetUser.username}</h2>
             {mediaError ? (
-               <span className="text-yellow-500 font-bold text-xs bg-yellow-950/50 px-4 py-1.5 rounded-full border border-yellow-500/30">{mediaError}</span>
+               <span className="text-yellow-500 font-bold text-xs bg-black/40 px-4 py-1 rounded-full">{mediaError}</span>
             ) : callStatus === 'ringing' ? (
               <span className="text-red-500 font-bold uppercase tracking-widest text-xs animate-pulse">
                 {isIncoming ? 'Incoming Call...' : 'Calling...'}
               </span>
             ) : (
-              <span className="text-green-500 font-mono text-xl font-bold tracking-widest">{formatTime(callTime)}</span>
+              <span className="text-green-500 font-mono text-xl font-bold drop-shadow-md">{formatTime(callTime)}</span>
             )}
           </div>
         </div>
       </div>
 
-      {initialType === 'video' && callStatus === 'connected' && (
-        <div className="absolute top-12 right-6 w-28 aspect-[3/4] rounded-2xl bg-black overflow-hidden border-2 border-white/20 shadow-2xl z-20">
-          <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover transform -scale-x-100" />
+      {initialType === 'video' && (
+        <div className={`absolute transition-all duration-500 overflow-hidden border-2 border-white/20 shadow-2xl z-20 ${callStatus === 'connected' ? 'top-6 right-6 w-28 aspect-[3/4] rounded-2xl' : 'bottom-32 inset-x-10 h-0 opacity-0'}`}>
+          <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover transform -scale-x-100" />
         </div>
       )}
 
       <div className="absolute bottom-12 inset-x-0 flex justify-center items-center gap-6 z-30 px-6">
         {isIncoming && callStatus === 'ringing' ? (
           <>
-            <button 
-              onClick={handleEndCall} 
-              className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-lg active:scale-90"
-            >
+            <button onClick={handleEndCall} className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-lg active:scale-90">
               <i className="fa-solid fa-phone-slash text-2xl text-white"></i>
             </button>
-            <button 
-              onClick={handleAccept} 
-              className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-600/50 animate-bounce active:scale-90"
-            >
+            <button onClick={handleAccept} className="w-20 h-20 bg-green-600 rounded-full flex items-center justify-center shadow-xl shadow-green-600/50 animate-bounce active:scale-90">
               <i className="fa-solid fa-phone text-3xl text-white"></i>
             </button>
           </>
@@ -280,21 +246,21 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
           <>
             <button 
               onClick={() => {
-                const audioTrack = streamRef.current?.getAudioTracks()[0];
-                if (audioTrack) {
-                  audioTrack.enabled = !audioTrack.enabled;
-                  setIsMuted(!audioTrack.enabled);
+                const track = streamRef.current?.getAudioTracks()[0];
+                if (track) {
+                  track.enabled = !track.enabled;
+                  setIsMuted(!track.enabled);
                 }
               }} 
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/10 border border-white/20 hover:bg-white/20'}`}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/10 backdrop-blur-md border border-white/20'}`}
             >
               <i className={`fa-solid ${isMuted ? 'fa-microphone-slash' : 'fa-microphone'} text-xl`}></i>
             </button>
-            <button onClick={handleEndCall} className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center shadow-2xl shadow-red-600/50 active:scale-90 hover:bg-red-700 transition-all border-4 border-white/10">
+            <button onClick={handleEndCall} className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center shadow-2xl active:scale-90">
               <i className="fa-solid fa-phone-slash text-3xl text-white"></i>
             </button>
-            <button className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center border border-white/20 hover:bg-white/20 transition-all">
-              <i className="fa-solid fa-volume-high text-xl"></i>
+            <button className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20">
+              <i className="fa-solid fa-volume-high text-xl text-white"></i>
             </button>
           </>
         )}
