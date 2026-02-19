@@ -27,9 +27,12 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  
+  // কলিং স্টেট
   const [isCalling, setIsCalling] = useState(false);
   const [callType, setCallType] = useState<'audio' | 'video'>('video');
   const [callingUser, setCallingUser] = useState<User | null>(null);
+  const [isIncoming, setIsIncoming] = useState(false);
   
   const [activeNotification, setActiveNotification] = useState<{senderName: string, text: string} | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -82,9 +85,33 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
+  // ইনকামিং কল সিগন্যাল লিসেনার
   useEffect(() => {
     if (!currentUser) return;
-    const channel = supabase.channel('app_global_realtime_v2')
+
+    const signalChannel = supabase.channel(`calls:${currentUser.id}`)
+      .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
+        // যদি অলরেডি কলে না থাকে, তবে ইনকামিং কল দেখাও
+        if (!isCalling) {
+          setCallingUser(payload.caller);
+          setCallType(payload.callType);
+          setIsIncoming(true);
+          setIsCalling(true);
+        }
+      })
+      .on('broadcast', { event: 'call_ended' }, () => {
+        setIsCalling(false);
+        setCallingUser(null);
+        setIsIncoming(false);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(signalChannel); };
+  }, [currentUser, isCalling]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const channel = supabase.channel('app_global_realtime_v3')
       .on('postgres_changes', { event: 'INSERT', table: 'messages' }, async (payload) => {
         const msg = payload.new;
         if (String(msg.receiver_id) === String(currentUser.id) && String(msg.sender_id) !== String(currentUser.id)) {
@@ -129,9 +156,31 @@ const App: React.FC = () => {
   useEffect(() => { if (session && currentUser) loadFeed(); }, [session, currentUser]);
 
   const startCall = (type: 'audio' | 'video' = 'video', target: User | null = null) => {
+    if (!target) return; // জাস্ট আইডল কলিং বন্ধ করা হলো
     setCallType(type);
-    setCallingUser(target || { id: 'ai', username: 'Sangi AI', avatar: 'https://picsum.photos/seed/sangi-bot/400' });
+    setCallingUser(target);
+    setIsIncoming(false);
     setIsCalling(true);
+    
+    // সিগন্যাল পাঠানো (যাকে কল দিচ্ছেন তাকে জানানো)
+    supabase.channel(`calls:${target.id}`).send({
+      type: 'broadcast',
+      event: 'incoming_call',
+      payload: { caller: currentUser, callType: type }
+    });
+  };
+
+  const endCall = () => {
+    if (callingUser) {
+      supabase.channel(`calls:${callingUser.id}`).send({
+        type: 'broadcast',
+        event: 'call_ended',
+        payload: { from: currentUser?.id }
+      });
+    }
+    setIsCalling(false);
+    setCallingUser(null);
+    setIsIncoming(false);
   };
 
   if (loadingSession) {
@@ -183,9 +232,6 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex-1 flex justify-end gap-2 items-center">
-          <button onClick={() => startCall('video')} className="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 text-green-600 border border-green-100 hover:bg-green-100 transition-all active:scale-90">
-            <i className="fa-solid fa-phone"></i>
-          </button>
           <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-10 h-10 rounded-full flex items-center justify-center relative ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}>
             <i className="fa-solid fa-bolt"></i>
             {unreadMessagesCount > 0 && (
@@ -207,7 +253,6 @@ const App: React.FC = () => {
           user={currentUser} 
           onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
           unreadMessagesCount={unreadMessagesCount}
-          onCallAIClick={() => startCall('video')}
         />
         <main className={`flex-1 min-w-0 ${activeTab === AppTab.MESSAGES ? 'p-0' : 'px-2 py-4'} overflow-x-hidden`}>
           <div className={`${activeTab === AppTab.MESSAGES ? 'max-w-full' : 'max-w-[700px]'} mx-auto h-full`}>
@@ -221,7 +266,15 @@ const App: React.FC = () => {
         <ContactsSidebar currentUserId={currentUser.id} onContactClick={(u) => {setSelectedChatUser(u); setActiveTab(AppTab.MESSAGES);}} />
       </div>
 
-      {isCalling && callingUser && <CallingOverlay initialType={callType} targetUser={callingUser} onClose={() => {setIsCalling(false); setCallingUser(null);}} />}
+      {isCalling && callingUser && (
+        <CallingOverlay 
+          initialType={callType} 
+          targetUser={callingUser} 
+          isIncoming={isIncoming}
+          currentUser={currentUser}
+          onClose={endCall} 
+        />
+      )}
 
       {activeTab !== AppTab.MESSAGES && (
         <BottomNav 
