@@ -48,7 +48,6 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
       console.log("Remote track received:", event.streams[0]);
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0];
-        // Force play remote stream to ensure audio works
         remoteVideoRef.current.play().catch(e => console.error("Auto-play failed:", e));
       }
     };
@@ -71,17 +70,15 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   };
 
   useEffect(() => {
-    // Play Call Ringtone
     toneRef.current = new Audio(isIncoming ? INCOMING_TONE_URL : CALLING_TONE_URL);
     toneRef.current.loop = true;
-    toneRef.current.play().catch(() => console.log("Audio blocked by browser"));
+    toneRef.current.play().catch(() => console.log("Audio blocked"));
 
     const pc = createPeerConnection();
 
-    // Listen for signaling messages
     const channel = supabase.channel(`calls:${currentUser.id}`)
       .on('broadcast', { event: 'call_accepted' }, () => {
-        setCallStatus('connected');
+        setCallStatus('connected'); // কলারের জন্য স্ট্যাটাস আপডেট
       })
       .on('broadcast', { event: 'call_ended' }, () => {
         handleEndCall();
@@ -92,7 +89,6 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
         try {
           if (payload.type === 'offer') {
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
-            // Receiver adds their tracks before answering
             const stream = await navigator.mediaDevices.getUserMedia({ video: initialType === 'video', audio: true });
             streamRef.current = stream;
             stream.getTracks().forEach(track => pcRef.current?.addTrack(track, stream));
@@ -101,7 +97,9 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
             await pcRef.current.setLocalDescription(answer);
             sendSignalingMessage({ type: 'answer', answer });
           } else if (payload.type === 'answer') {
+            // যখন কলার অন্য প্রান্ত থেকে Answer পাবে, তখন কল কানেক্টেড হবে
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+            setCallStatus('connected'); 
           } else if (payload.type === 'candidate') {
             await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
           }
@@ -118,14 +116,8 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
           audio: true 
         });
         streamRef.current = stream;
-        
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
-
-        stream.getTracks().forEach(track => {
-          pc.addTrack(track, stream);
-        });
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -135,9 +127,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
       }
     };
 
-    if (!isIncoming) {
-      startCallAsCaller();
-    }
+    if (!isIncoming) startCallAsCaller();
 
     return () => {
       supabase.removeChannel(channel);
@@ -155,22 +145,13 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   }, [callStatus]);
 
   const stopMedia = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (pcRef.current) {
-      pcRef.current.close();
-    }
-    if (toneRef.current) {
-      toneRef.current.pause();
-      toneRef.current = null;
-    }
+    if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
+    if (pcRef.current) pcRef.current.close();
+    if (toneRef.current) { toneRef.current.pause(); toneRef.current = null; }
   };
 
   const handleAccept = async () => {
     setCallStatus('connected');
-    
-    // Notify caller that call is accepted
     const channel = supabase.channel(`calls:${targetUser.id}`);
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
@@ -196,7 +177,6 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
 
   return (
     <div className="fixed inset-0 z-[500] bg-gray-950 text-white flex flex-col animate-in fade-in duration-300 overflow-hidden">
-      {/* Remote Audio/Video Stream */}
       <video 
         ref={remoteVideoRef} 
         autoPlay 
@@ -206,10 +186,8 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
 
       <div className={`absolute inset-0 flex flex-col items-center justify-center bg-gray-900/60 backdrop-blur-sm transition-all duration-500 z-10 ${callStatus === 'connected' ? 'bg-transparent backdrop-blur-0' : ''}`}>
         <div className="flex flex-col items-center gap-6">
-          <div className="relative">
-            <div className={`w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden border-4 transition-all duration-500 ${callStatus === 'connected' ? 'scale-0 opacity-0' : 'border-red-500 shadow-2xl animate-pulse'}`}>
-                <img src={targetUser.avatar} className="w-full h-full object-cover" alt="" />
-            </div>
+          <div className={`w-32 h-32 md:w-44 md:h-44 rounded-full overflow-hidden border-4 transition-all duration-500 ${callStatus === 'connected' ? 'scale-0 opacity-0' : 'border-red-500 shadow-2xl animate-pulse'}`}>
+            <img src={targetUser.avatar} className="w-full h-full object-cover" alt="" />
           </div>
           <div className={`text-center transition-all ${callStatus === 'connected' ? 'fixed top-12 inset-x-0' : ''}`}>
             <h2 className={`font-black drop-shadow-lg transition-all ${callStatus === 'connected' ? 'text-lg' : 'text-3xl mb-1'}`}>{targetUser.username}</h2>
@@ -247,10 +225,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
             <button 
               onClick={() => {
                 const track = streamRef.current?.getAudioTracks()[0];
-                if (track) {
-                  track.enabled = !track.enabled;
-                  setIsMuted(!track.enabled);
-                }
+                if (track) { track.enabled = !track.enabled; setIsMuted(!track.enabled); }
               }} 
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-red-500 text-white' : 'bg-white/10 backdrop-blur-md border border-white/20'}`}
             >
