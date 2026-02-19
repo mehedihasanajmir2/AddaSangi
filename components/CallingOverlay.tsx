@@ -33,9 +33,12 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   const streamRef = useRef<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const toneRef = useRef<HTMLAudioElement | null>(null);
+  const pendingOfferRef = useRef<any>(null);
 
   // Initialize WebRTC Peer Connection
   const createPeerConnection = () => {
+    if (pcRef.current) return pcRef.current;
+    
     const pc = new RTCPeerConnection(iceServers);
     
     pc.onicecandidate = (event) => {
@@ -47,9 +50,15 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
     pc.ontrack = (event) => {
       console.log("Remote track received:", event.streams[0]);
       if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
-        // Ensure the audio/video starts playing immediately
-        remoteVideoRef.current.play().catch(e => console.error("Remote playback failed:", e));
+        // Use the first stream or create a new one from the track
+        const remoteStream = event.streams[0] || new MediaStream([event.track]);
+        remoteVideoRef.current.srcObject = remoteStream;
+        
+        // Ensure playback starts
+        remoteVideoRef.current.play().catch(e => {
+          console.error("Remote playback failed:", e);
+          // Retry playback on user interaction if needed
+        });
       }
     };
 
@@ -75,13 +84,11 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
     toneRef.current.loop = true;
     toneRef.current.play().catch(() => console.log("Audio auto-play blocked by browser"));
 
-    const pc = createPeerConnection();
+    createPeerConnection();
 
-    // Listen for signaling and connection events
     const channel = supabase.channel(`calls:${currentUser.id}`)
       .on('broadcast', { event: 'call_accepted' }, () => {
-        console.log("Call accepted by target user");
-        setCallStatus('connected'); // কলারের জন্য স্ট্যাটাস কানেক্টেড করা
+        setCallStatus('connected');
       })
       .on('broadcast', { event: 'call_ended' }, () => {
         handleEndCall();
@@ -91,17 +98,11 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
         
         try {
           if (payload.type === 'offer') {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
-            const stream = await navigator.mediaDevices.getUserMedia({ video: initialType === 'video', audio: true });
-            streamRef.current = stream;
-            stream.getTracks().forEach(track => pcRef.current?.addTrack(track, stream));
-            
-            const answer = await pcRef.current.createAnswer();
-            await pcRef.current.setLocalDescription(answer);
-            sendSignalingMessage({ type: 'answer', answer });
+            // Store offer to handle it only when user clicks 'Accept'
+            pendingOfferRef.current = payload.offer;
           } else if (payload.type === 'answer') {
             await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
-            setCallStatus('connected'); // WebRTC Answer পাওয়ার পর স্ট্যাটাস কানেক্টেড করা
+            setCallStatus('connected');
           } else if (payload.type === 'candidate') {
             await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
           }
@@ -123,13 +124,15 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
           localVideoRef.current.srcObject = stream;
         }
 
-        stream.getTracks().forEach(track => {
-          pc.addTrack(track, stream);
-        });
+        if (pcRef.current) {
+          stream.getTracks().forEach(track => {
+            pcRef.current?.addTrack(track, stream);
+          });
 
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        sendSignalingMessage({ type: 'offer', offer });
+          const offer = await pcRef.current.createOffer();
+          await pcRef.current.setLocalDescription(offer);
+          sendSignalingMessage({ type: 'offer', offer });
+        }
       } catch (err: any) {
         setMediaError("মাইক্রোফোন বা ক্যামেরা পারমিশন প্রয়োজন।");
       }
@@ -163,6 +166,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
     }
     if (pcRef.current) {
       pcRef.current.close();
+      pcRef.current = null;
     }
     if (toneRef.current) {
       toneRef.current.pause();
@@ -171,19 +175,45 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   };
 
   const handleAccept = async () => {
-    setCallStatus('connected');
+    if (!pendingOfferRef.current || !pcRef.current) return;
     
-    // Notify caller that call is accepted
-    const channel = supabase.channel(`calls:${targetUser.id}`);
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        channel.send({
-          type: 'broadcast',
-          event: 'call_accepted',
-          payload: { from: currentUser.id }
-        });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: initialType === 'video', 
+        audio: true 
+      });
+      streamRef.current = stream;
+      
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
       }
-    });
+
+      stream.getTracks().forEach(track => {
+        pcRef.current?.addTrack(track, stream);
+      });
+
+      await pcRef.current.setRemoteDescription(new RTCSessionDescription(pendingOfferRef.current));
+      const answer = await pcRef.current.createAnswer();
+      await pcRef.current.setLocalDescription(answer);
+      
+      sendSignalingMessage({ type: 'answer', answer });
+      setCallStatus('connected');
+      
+      // Notify caller that call is accepted via broadcast
+      const acceptChannel = supabase.channel(`calls:${targetUser.id}`);
+      acceptChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          acceptChannel.send({
+            type: 'broadcast',
+            event: 'call_accepted',
+            payload: { from: currentUser.id }
+          });
+        }
+      });
+    } catch (err) {
+      console.error("Accept Error:", err);
+      setMediaError("মাইক্রোফোন বা ক্যামেরা পারমিশন প্রয়োজন।");
+    }
   };
 
   const handleEndCall = () => {
@@ -199,7 +229,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
 
   return (
     <div className="fixed inset-0 z-[500] bg-gray-950 text-white flex flex-col animate-in fade-in duration-300 overflow-hidden">
-      {/* Remote Audio/Video Stream - This element plays the sound */}
+      {/* Remote Audio/Video Stream */}
       <video 
         ref={remoteVideoRef} 
         autoPlay 
