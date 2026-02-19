@@ -28,10 +28,10 @@ const App: React.FC = () => {
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [isCalling, setIsCalling] = useState(false);
+  const [callType, setCallType] = useState<'audio' | 'video'>('video');
+  const [callingUser, setCallingUser] = useState<User | null>(null);
   
-  // মেসেজ টোস্ট স্টেট (কল চলাকালীন মেসেজ দেখার জন্য)
   const [activeNotification, setActiveNotification] = useState<{senderName: string, text: string} | null>(null);
-  
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -42,7 +42,7 @@ const App: React.FC = () => {
   const playNotificationSound = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => console.log("Audio play blocked: interaction needed"));
+      audioRef.current.play().catch(e => console.log("Audio play blocked"));
     }
   }, []);
 
@@ -82,29 +82,19 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
-  // গ্লোবাল মেসেজ নোটিফিকেশন - এটি কল চালু থাকলেও বাজবে (যেমন কম্পিউটারে হয়)
   useEffect(() => {
     if (!currentUser) return;
-    const channel = supabase.channel('app_global_realtime')
+    const channel = supabase.channel('app_global_realtime_v2')
       .on('postgres_changes', { event: 'INSERT', table: 'messages' }, async (payload) => {
         const msg = payload.new;
         if (String(msg.receiver_id) === String(currentUser.id) && String(msg.sender_id) !== String(currentUser.id)) {
-          // ১. সাউন্ড বাজানো (যেকোনো মোডে)
           playNotificationSound();
-          
-          // ২. মেসেজ কাউন্ট আপডেট
-          if (activeTab !== AppTab.MESSAGES) {
-            setUnreadMessagesCount(prev => prev + 1);
-          }
-
-          // ৩. পপ-আপ টোস্ট দেখানো (যদি কলিং বা ফিডে থাকে)
+          if (activeTab !== AppTab.MESSAGES) setUnreadMessagesCount(prev => prev + 1);
           const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', msg.sender_id).maybeSingle();
           setActiveNotification({
-            senderName: sender?.full_name || 'কেউ একজন',
+            senderName: sender?.full_name || 'AddaSangi User',
             text: msg.content
           });
-          
-          // ৫ সেকেন্ড পর অটো রিমুভ
           setTimeout(() => setActiveNotification(null), 5000);
         }
       })
@@ -115,25 +105,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (activeTab === AppTab.MESSAGES) setUnreadMessagesCount(0);
   }, [activeTab]);
-
-  const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) { setSearchResults([]); return; }
-    try {
-      const { data } = await supabase.from('profiles').select('*').ilike('full_name', `%${query}%`).limit(10);
-      if (data) {
-        setSearchResults(data.map(p => ({
-          id: p.id,
-          username: p.full_name || 'User',
-          avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`
-        })));
-      }
-    } catch (err) { console.error("Search Error:", err); }
-  }, []);
-
-  useEffect(() => {
-    const t = setTimeout(() => handleSearch(searchQuery), 300);
-    return () => clearTimeout(t);
-  }, [searchQuery, handleSearch]);
 
   const loadFeed = async () => {
     if (!session) return;
@@ -157,6 +128,12 @@ const App: React.FC = () => {
 
   useEffect(() => { if (session && currentUser) loadFeed(); }, [session, currentUser]);
 
+  const startCall = (type: 'audio' | 'video' = 'video', target: User | null = null) => {
+    setCallType(type);
+    setCallingUser(target || { id: 'ai', username: 'Sangi AI', avatar: 'https://picsum.photos/seed/sangi-bot/400' });
+    setIsCalling(true);
+  };
+
   if (loadingSession) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -171,11 +148,10 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans relative">
-      {/* গ্লোবাল মেসেজ টোস্ট (জ-ইনডেক্স কলিং এর ওপরে) */}
       {activeNotification && (
         <div 
           onClick={() => { setActiveTab(AppTab.MESSAGES); setActiveNotification(null); }}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] bg-white border-2 border-red-500 shadow-2xl p-4 rounded-2xl flex items-center gap-4 w-[90%] max-w-[400px] animate-in slide-in-from-top-10 duration-500 cursor-pointer hover:scale-105 transition-transform"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] bg-white border-2 border-red-500 shadow-2xl p-4 rounded-2xl flex items-center gap-4 w-[95%] max-w-[400px] animate-in slide-in-from-top-10 duration-500 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
         >
           <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
              <i className="fa-solid fa-message text-red-600"></i>
@@ -206,15 +182,10 @@ const App: React.FC = () => {
             />
           </div>
         </div>
-        
         <div className="flex-1 flex justify-end gap-2 items-center">
-          <button 
-            onClick={() => setIsCalling(true)}
-            className="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 text-green-600 border border-green-100 animate-pulse hover:animate-none transition-all"
-          >
+          <button onClick={() => startCall('video')} className="w-10 h-10 rounded-full flex items-center justify-center bg-green-50 text-green-600 border border-green-100 hover:bg-green-100 transition-all active:scale-90">
             <i className="fa-solid fa-phone"></i>
           </button>
-
           <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`w-10 h-10 rounded-full flex items-center justify-center relative ${activeTab === AppTab.MESSAGES ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-700'}`}>
             <i className="fa-solid fa-bolt"></i>
             {unreadMessagesCount > 0 && (
@@ -223,7 +194,7 @@ const App: React.FC = () => {
               </span>
             )}
           </button>
-          <button onClick={() => setActiveTab(AppTab.PROFILE)} className="flex items-center gap-2 bg-gray-100 px-1 py-1 rounded-full border">
+          <button onClick={() => setActiveTab(AppTab.PROFILE)} className="flex items-center gap-2 bg-gray-100 p-0.5 rounded-full border">
              <img src={currentUser.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
           </button>
         </div>
@@ -236,13 +207,13 @@ const App: React.FC = () => {
           user={currentUser} 
           onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
           unreadMessagesCount={unreadMessagesCount}
-          onCallAIClick={() => setIsCalling(true)}
+          onCallAIClick={() => startCall('video')}
         />
         <main className={`flex-1 min-w-0 ${activeTab === AppTab.MESSAGES ? 'p-0' : 'px-2 py-4'} overflow-x-hidden`}>
           <div className={`${activeTab === AppTab.MESSAGES ? 'max-w-full' : 'max-w-[700px]'} mx-auto h-full`}>
             {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={loadFeed} onRefresh={loadFeed} onPostCreate={loadFeed} onPostDelete={loadFeed} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
             {activeTab === AppTab.SEARCH && <SearchResults results={searchResults} query={searchQuery} onQueryChange={setSearchQuery} onUserSelect={(u) => {setSelectedChatUser(u); setActiveTab(AppTab.MESSAGES);}} />}
-            {activeTab === AppTab.MESSAGES && <Messaging currentUser={currentUser} targetUser={selectedChatUser} />}
+            {activeTab === AppTab.MESSAGES && <Messaging currentUser={currentUser} targetUser={selectedChatUser} onStartCall={(type, user) => startCall(type, user)} />}
             {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} currentUser={currentUser} onPostDelete={loadFeed} onLike={loadFeed} onUpdateProfile={() => {}} />}
             {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
           </div>
@@ -250,7 +221,7 @@ const App: React.FC = () => {
         <ContactsSidebar currentUserId={currentUser.id} onContactClick={(u) => {setSelectedChatUser(u); setActiveTab(AppTab.MESSAGES);}} />
       </div>
 
-      {isCalling && <CallingOverlay onClose={() => setIsCalling(false)} />}
+      {isCalling && callingUser && <CallingOverlay initialType={callType} targetUser={callingUser} onClose={() => {setIsCalling(false); setCallingUser(null);}} />}
 
       {activeTab !== AppTab.MESSAGES && (
         <BottomNav 
