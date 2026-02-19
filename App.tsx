@@ -91,7 +91,6 @@ const App: React.FC = () => {
 
     const signalChannel = supabase.channel(`calls:${currentUser.id}`)
       .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
-        // যদি অলরেডি কলে না থাকে, তবে ইনকামিং কল দেখাও
         if (!isCalling) {
           setCallingUser(payload.caller);
           setCallType(payload.callType);
@@ -156,26 +155,36 @@ const App: React.FC = () => {
   useEffect(() => { if (session && currentUser) loadFeed(); }, [session, currentUser]);
 
   const startCall = (type: 'audio' | 'video' = 'video', target: User | null = null) => {
-    if (!target) return; // জাস্ট আইডল কলিং বন্ধ করা হলো
+    if (!target || !currentUser) return;
     setCallType(type);
     setCallingUser(target);
     setIsIncoming(false);
     setIsCalling(true);
     
     // সিগন্যাল পাঠানো (যাকে কল দিচ্ছেন তাকে জানানো)
-    supabase.channel(`calls:${target.id}`).send({
-      type: 'broadcast',
-      event: 'incoming_call',
-      payload: { caller: currentUser, callType: type }
+    const channel = supabase.channel(`calls:${target.id}`);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.send({
+          type: 'broadcast',
+          event: 'incoming_call',
+          payload: { caller: currentUser, callType: type }
+        });
+      }
     });
   };
 
   const endCall = () => {
-    if (callingUser) {
-      supabase.channel(`calls:${callingUser.id}`).send({
-        type: 'broadcast',
-        event: 'call_ended',
-        payload: { from: currentUser?.id }
+    if (callingUser && currentUser) {
+      const channel = supabase.channel(`calls:${callingUser.id}`);
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          channel.send({
+            type: 'broadcast',
+            event: 'call_ended',
+            payload: { from: currentUser.id }
+          });
+        }
       });
     }
     setIsCalling(false);

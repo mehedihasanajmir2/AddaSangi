@@ -51,6 +51,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
             audio: true 
           });
         } catch (err: any) {
+          console.warn("Media failed, falling back to audio only");
           setHasCamera(false);
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
@@ -59,17 +60,20 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
           videoRef.current.srcObject = stream;
         }
       } catch (err: any) {
-        setMediaError("ডিভাইস পারমিশন প্রয়োজন।");
+        console.error("Critical Media Error:", err);
+        setMediaError("ক্যামেরা/মাইক্রোফোন পারমিশন প্রয়োজন।");
       }
     };
 
-    if (!isIncoming) startMedia();
+    if (!isIncoming) {
+      startMedia();
+    }
 
     return () => {
       supabase.removeChannel(channel);
       stopMedia();
     };
-  }, [initialType, isIncoming]);
+  }, [initialType, isIncoming, currentUser.id]);
 
   useEffect(() => {
     let timer: any;
@@ -94,7 +98,21 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
   };
 
   const handleAccept = async () => {
-    // ক্যামেরা/মাইক চালু করা
+    // ১. আগে স্ট্যাটাস এবং সিগন্যাল আপডেট করা (যাতে কল না কাটে)
+    setCallStatus('connected');
+    
+    const channel = supabase.channel(`calls:${targetUser.id}`);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.send({
+          type: 'broadcast',
+          event: 'call_accepted',
+          payload: { from: currentUser.id }
+        });
+      }
+    });
+
+    // ২. তারপর ক্যামেরা অন করার চেষ্টা করা
     try {
       let stream: MediaStream;
       try {
@@ -107,17 +125,10 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
       if (videoRef.current && initialType === 'video' && stream.getVideoTracks().length > 0) {
         videoRef.current.srcObject = stream;
       }
-      
-      setCallStatus('connected');
-      // কলারকে জানানো যে আমি রিসিভ করেছি
-      supabase.channel(`calls:${targetUser.id}`).send({
-        type: 'broadcast',
-        event: 'call_accepted',
-        payload: { from: currentUser.id }
-      });
     } catch (e) {
-      alert("ডিভাইস অ্যাক্সেস করা সম্ভব হচ্ছে না।");
-      handleEndCall();
+      console.warn("Media could not be initialized after accept", e);
+      setMediaError("ডিভাইস অ্যাক্সেস করা সম্ভব হচ্ছে না, শুধু চ্যাট চলবে।");
+      // কল কাটবে না, শুধু চ্যাট মোড বা অডিও ছাড়াই কানেক্ট থাকবে।
     }
   };
 
@@ -170,7 +181,7 @@ const CallingOverlay: React.FC<CallingOverlayProps> = ({ onClose, initialType = 
                <span className="text-yellow-500 font-bold text-xs bg-yellow-950/50 px-4 py-1.5 rounded-full border border-yellow-500/30">{mediaError}</span>
             ) : callStatus === 'ringing' ? (
               <span className="text-red-500 font-bold uppercase tracking-widest text-xs animate-pulse">
-                {isIncoming ? 'Ringing...' : 'Calling...'}
+                {isIncoming ? 'Incoming Call...' : 'Calling...'}
               </span>
             ) : (
               <span className="text-green-500 font-mono text-xl font-bold tracking-widest">{formatTime(callTime)}</span>
