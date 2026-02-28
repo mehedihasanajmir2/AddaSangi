@@ -20,7 +20,7 @@ const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<AppTab>(AppTab.FEED);
+  const [activeTab, setActiveTab] = useState<AppTab>(AppTab.MESSAGES);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,7 +107,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
     const channel = supabase.channel('app_global_realtime_v3')
-      .on('postgres_changes', { event: 'INSERT', table: 'messages' }, async (payload) => {
+      .on('postgres_changes' as any, { event: 'INSERT', table: 'messages' }, async (payload: any) => {
         const msg = payload.new;
         if (String(msg.receiver_id) === String(currentUser.id) && String(msg.sender_id) !== String(currentUser.id)) {
           playNotificationSound();
@@ -145,6 +145,42 @@ const App: React.FC = () => {
   };
 
   useEffect(() => { if (session && currentUser) loadFeed(); }, [session, currentUser]);
+
+  useEffect(() => {
+    const searchUsers = async () => {
+      if (!searchQuery.trim()) {
+        setSearchResults([]);
+        return;
+      }
+      try {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('full_name', `%${searchQuery}%`)
+          .limit(20);
+        
+        if (profiles) {
+          setSearchResults(profiles.map((p: any) => ({
+            id: p.id,
+            username: p.full_name || 'AddaSangi User',
+            avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
+            coverUrl: p.cover_url || `https://picsum.photos/seed/cover-${p.id}/1200/400`,
+            bio: p.bio,
+            email: p.email,
+            location: p.location
+          })));
+        }
+      } catch (err) {
+        console.error("Search Error:", err);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      searchUsers();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const startCall = (type: 'audio' | 'video' = 'video', target: User | null = null) => {
     if (!target || !currentUser) return;
@@ -187,56 +223,72 @@ const App: React.FC = () => {
   if (!currentUser) return null;
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] flex flex-col font-sans relative">
-      <header className="fixed top-0 inset-x-0 h-14 bg-white border-b z-50 flex items-center px-4 shadow-sm">
-        <div className="flex items-center gap-2 flex-1">
-          <div className="cursor-pointer" onClick={() => setActiveTab(AppTab.FEED)}>
-            <img src={LOGO_URL} className="w-9 h-9" alt="logo" />
-          </div>
-          <div className="ml-2 relative hidden md:block w-64">
-            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            <input 
-              type="text" 
-              placeholder="Search AddaSangi" 
-              className="w-full bg-gray-100 rounded-full py-2 pl-9 pr-4 outline-none text-sm font-bold"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setActiveTab(AppTab.SEARCH); }}
-            />
-          </div>
-        </div>
-        <div className="flex justify-end items-center">
-          <button onClick={() => setActiveTab(AppTab.PROFILE)} className="flex items-center gap-2 bg-gray-100 p-0.5 rounded-full border">
-             <img src={currentUser.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
-          </button>
+    <div className="h-screen bg-[#e8f5e9] flex flex-col font-sans overflow-hidden">
+      {/* WhatsApp Style Header (Mobile Only) */}
+      <header className="md:hidden h-16 bg-[#b71c1c] text-white flex items-center justify-between px-4 shadow-lg z-50 shrink-0">
+        <h1 className="text-xl font-bold tracking-tight">AddaSangi</h1>
+        <div className="flex items-center gap-5">
+          <button onClick={() => setActiveTab(AppTab.SEARCH)} className="text-xl text-white/70 hover:text-white"><i className="fa-solid fa-magnifying-glass"></i></button>
+          <button onClick={() => setActiveTab(AppTab.MENU)} className="text-xl text-white/70 hover:text-white"><i className="fa-solid fa-ellipsis-vertical"></i></button>
         </div>
       </header>
 
-      {/* Top Navigation Bar - Now on top for both Mobile & Desktop */}
-      <TopNav 
-        activeTab={activeTab} 
-        onTabChange={setActiveTab} 
-        onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
-        unreadMessagesCount={unreadMessagesCount}
-      />
+      {/* WhatsApp Style Tabs (Mobile Only) */}
+      <nav className="md:hidden h-12 bg-[#b71c1c] text-white flex items-stretch shrink-0 shadow-md">
+        <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`flex-1 flex flex-col items-center justify-center relative transition-all ${activeTab === AppTab.MESSAGES ? 'text-white' : 'text-white/60'}`}>
+          <span className="text-xs font-bold uppercase tracking-widest">Chats</span>
+          {activeTab === AppTab.MESSAGES && <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>}
+        </button>
+        <button onClick={() => setActiveTab(AppTab.STATUS)} className={`flex-1 flex flex-col items-center justify-center relative transition-all ${activeTab === AppTab.STATUS ? 'text-white' : 'text-white/60'}`}>
+          <span className="text-xs font-bold uppercase tracking-widest">Status</span>
+          {activeTab === AppTab.STATUS && <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>}
+        </button>
+        <button onClick={() => setActiveTab(AppTab.CALLS)} className={`flex-1 flex flex-col items-center justify-center relative transition-all ${activeTab === AppTab.CALLS ? 'text-white' : 'text-white/60'}`}>
+          <span className="text-xs font-bold uppercase tracking-widest">Calls</span>
+          {activeTab === AppTab.CALLS && <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>}
+        </button>
+      </nav>
 
-      <div className="flex-1 flex max-w-[1400px] mx-auto w-full pt-28">
-        <Sidebar 
-          activeTab={activeTab} 
-          onTabChange={setActiveTab} 
-          user={currentUser} 
-          onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
-          unreadMessagesCount={unreadMessagesCount}
-        />
-        <main className={`flex-1 min-w-0 ${activeTab === AppTab.MESSAGES ? 'p-0' : 'px-2 py-4'} overflow-x-hidden`}>
-          <div className={`${activeTab === AppTab.MESSAGES ? 'max-w-full' : 'max-w-[700px]'} mx-auto h-full`}>
-            {activeTab === AppTab.FEED && <Feed posts={posts} stories={[]} loading={loading} currentUser={currentUser} onLike={loadFeed} onRefresh={loadFeed} onPostCreate={loadFeed} onPostDelete={loadFeed} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
-            {activeTab === AppTab.SEARCH && <SearchResults results={searchResults} query={searchQuery} onQueryChange={setSearchQuery} onUserSelect={(u) => {setSelectedChatUser(u); setActiveTab(AppTab.MESSAGES);}} />}
-            {activeTab === AppTab.MESSAGES && <Messaging currentUser={currentUser} targetUser={selectedChatUser} onStartCall={(type, user) => startCall(type, user)} />}
-            {activeTab === AppTab.PROFILE && <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} currentUser={currentUser} onPostDelete={loadFeed} onLike={loadFeed} onUpdateProfile={() => {}} />}
-            {activeTab === AppTab.MENU && <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />}
-          </div>
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Main Content Area - Full Screen for WhatsApp feel */}
+        <main className="flex-1 h-full overflow-hidden bg-white">
+          {activeTab === AppTab.SEARCH && (
+            <div className="h-full bg-white overflow-y-auto">
+              <SearchResults results={searchResults} query={searchQuery} onQueryChange={setSearchQuery} onUserSelect={(u) => {setSelectedChatUser(u); setActiveTab(AppTab.MESSAGES);}} />
+            </div>
+          )}
+          {activeTab === AppTab.MESSAGES && (
+            <Messaging currentUser={currentUser} targetUser={selectedChatUser} onStartCall={(type, user) => startCall(type, user)} />
+          )}
+          {activeTab === AppTab.STATUS && (
+            <div className="h-full bg-[#f0f2f5] flex flex-col items-center justify-center text-gray-400 p-10 text-center">
+               <div className="w-20 h-20 rounded-full border-4 border-dashed border-gray-200 flex items-center justify-center mb-4">
+                 <i className="fa-solid fa-circle-notch text-4xl opacity-20"></i>
+               </div>
+               <h3 className="text-xl font-bold text-gray-800">Status</h3>
+               <p className="text-sm mt-2">Tap to add status update</p>
+            </div>
+          )}
+          {activeTab === AppTab.CALLS && (
+            <div className="h-full bg-[#f0f2f5] flex flex-col items-center justify-center text-gray-400 p-10 text-center">
+               <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                 <i className="fa-solid fa-phone-slash text-4xl opacity-20"></i>
+               </div>
+               <h3 className="text-xl font-bold text-gray-800">No calls</h3>
+               <p className="text-sm mt-2">Recent calls will appear here</p>
+            </div>
+          )}
+          {activeTab === AppTab.PROFILE && (
+            <div className="h-full bg-[#e8f5e9] overflow-y-auto p-4">
+               <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} currentUser={currentUser} onPostDelete={loadFeed} onLike={loadFeed} onUpdateProfile={() => {}} />
+            </div>
+          )}
+          {activeTab === AppTab.MENU && (
+            <div className="h-full bg-[#e8f5e9] overflow-y-auto p-4">
+              <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
+            </div>
+          )}
         </main>
-        <ContactsSidebar currentUserId={currentUser.id} onContactClick={(u) => {setSelectedChatUser(u); setActiveTab(AppTab.MESSAGES);}} />
       </div>
 
       {isCalling && callingUser && (

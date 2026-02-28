@@ -71,5 +71,7 @@ export enum AppTab {
   PROFILE = 'profile',
   MENU = 'menu',
   MESSAGES = 'messages',
-  NOTIFICATIONS = 'notifications'
+  NOTIFICATIONS = 'notifications',
+  STATUS = 'status',
+  CALLS = 'calls'
 }

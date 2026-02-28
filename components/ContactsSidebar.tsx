@@ -39,19 +39,19 @@ const ContactsSidebar: React.FC<ContactsSidebarProps> = ({ onContactClick, curre
     // রিয়েল টাইম আপডেটের জন্য লিসেনার
     const channel = supabase
       .channel('friendship_updates')
-      .on('postgres_changes', { event: '*', table: 'friendships' }, () => fetchFriends())
+      .on('postgres_changes' as any, { event: '*', table: 'friendships' }, () => fetchFriends())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [currentUserId]);
 
   return (
-    <aside className="hidden lg:flex flex-col w-[280px] p-4 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto">
+    <aside className="hidden lg:flex flex-col w-[280px] p-4 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto bg-[#e8f5e9]">
       <div className="flex justify-between items-center mb-4 px-2">
-        <h3 className="font-bold text-gray-500 uppercase text-xs tracking-widest">Your Friends</h3>
-        <div className="flex gap-4 text-gray-500">
-           <i className="fa-solid fa-video cursor-pointer hover:text-gray-800"></i>
-           <i className="fa-solid fa-magnifying-glass cursor-pointer hover:text-gray-800"></i>
+        <h3 className="font-bold text-red-800/40 uppercase text-xs tracking-widest">Your Friends</h3>
+        <div className="flex gap-4 text-red-800/40">
+           <i className="fa-solid fa-video cursor-pointer hover:text-red-800"></i>
+           <i className="fa-solid fa-magnifying-glass cursor-pointer hover:text-red-800"></i>
         </div>
       </div>
 
@@ -63,26 +63,26 @@ const ContactsSidebar: React.FC<ContactsSidebarProps> = ({ onContactClick, curre
             <button 
               key={contact.id} 
               onClick={() => onContactClick?.(contact)}
-              className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-gray-200 transition-colors relative text-left group"
+              className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/50 transition-colors relative text-left group"
             >
               <div className="relative">
-                <img src={contact.avatar} className="w-9 h-9 rounded-full object-cover border" alt="" />
+                <img src={contact.avatar} className="w-9 h-9 rounded-full object-cover border-2 border-white shadow-sm" alt="" />
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
               </div>
-              <span className="text-sm font-semibold text-gray-800 group-hover:text-red-600 truncate">{contact.username}</span>
+              <span className="text-sm font-semibold text-gray-800 group-hover:text-red-700 truncate">{contact.username}</span>
             </button>
           ))
         ) : (
-          <div className="p-4 text-center border-2 border-dashed rounded-xl bg-gray-50">
-            <p className="text-[10px] text-gray-400 font-bold">Search and add friends to see them here.</p>
+          <div className="p-4 text-center border-2 border-dashed rounded-xl bg-white/30 border-red-200">
+            <p className="text-[10px] text-red-800/40 font-bold">Search and add friends to see them here.</p>
           </div>
         )}
       </div>
 
-      <div className="mt-8 px-2 border-t border-gray-200 pt-4">
-        <h3 className="font-bold text-gray-500 uppercase text-xs tracking-widest mb-4">Groups</h3>
-        <button className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-gray-200 text-gray-600">
-           <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+      <div className="mt-8 px-2 border-t border-red-100 pt-4">
+        <h3 className="font-bold text-red-800/40 uppercase text-xs tracking-widest mb-4">Groups</h3>
+        <button className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-white/50 text-red-800">
+           <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
              <i className="fa-solid fa-plus text-xs"></i>
            </div>
            <span className="text-sm font-semibold">New Group</span>

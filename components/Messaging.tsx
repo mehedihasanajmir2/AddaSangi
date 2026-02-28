@@ -72,7 +72,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   useEffect(() => {
     fetchInbox();
     const channel = supabase.channel('global_chat_channel')
-      .on('postgres_changes', { event: 'INSERT', table: 'messages' }, (payload) => {
+      .on('postgres_changes' as any, { event: 'INSERT', table: 'messages' }, (payload: any) => {
           const newMsg = payload.new;
           const myId = String(currentUser.id);
           const senderId = String(newMsg.sender_id);
@@ -123,74 +123,140 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   };
 
   return (
-    <div className="flex h-[calc(100vh-56px)] md:h-[calc(100vh-100px)] bg-white md:rounded-xl md:shadow-xl md:border overflow-hidden">
-      <div className={`w-full md:w-80 border-r flex flex-col bg-gray-50 ${activeChat ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-4 border-b bg-white flex justify-between items-center">
-          <h2 className="font-black text-2xl text-gray-900">Chats</h2>
-          <div className="flex items-center gap-2">
-             <div className={`w-2 h-2 rounded-full ${realtimeStatus === 'online' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-             <span className="text-[10px] font-black uppercase text-gray-400">{realtimeStatus}</span>
+    <div className="flex h-full bg-white overflow-hidden">
+      {/* Inbox / Chat List */}
+      <div className={`w-full md:w-[400px] border-r flex flex-col bg-white ${activeChat ? 'hidden md:flex' : 'flex'}`}>
+        {/* WhatsApp Web Left Header */}
+        <div className="h-16 bg-[#1b5e20] flex items-center justify-between px-4 shrink-0 border-b border-white/10">
+          <img src={currentUser.avatar} className="w-10 h-10 rounded-full object-cover cursor-pointer border border-white/20" alt="profile" />
+          <div className="flex items-center gap-5 text-white/70 text-xl">
+            <button className="hover:text-white"><i className="fa-solid fa-circle-notch"></i></button>
+            <button className="hover:text-white"><i className="fa-solid fa-message"></i></button>
+            <button className="hover:text-white"><i className="fa-solid fa-ellipsis-vertical"></i></button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {inboxUsers.map(user => (
-            <button key={user.id} onClick={() => setActiveChat(user)} className={`w-full flex items-center gap-3 p-4 hover:bg-white transition-all border-l-4 ${activeChat?.id === user.id ? 'bg-white border-red-600' : 'border-transparent'}`}>
-               <div className="relative shrink-0">
-                 <img src={user.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" alt="" />
-                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white"></div>
-               </div>
-               <div className="text-left flex-1 min-w-0">
-                  <h4 className="font-bold text-gray-900 truncate">{user.username}</h4>
-                  <p className={`text-xs truncate ${!user.isMe ? 'font-black text-gray-900' : 'text-gray-500'}`}>{user.lastMessage}</p>
-               </div>
-            </button>
-          ))}
+        
+        {/* Search in Chats */}
+        <div className="p-2 bg-[#e8f5e9] border-b border-green-100">
+          <div className="relative">
+            <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-green-600 text-sm"></i>
+            <input 
+              type="text" 
+              placeholder="Search or start new chat" 
+              className="w-full bg-white rounded-lg py-2 pl-12 pr-4 outline-none text-sm placeholder:text-green-800/50 text-green-900 border border-green-200" 
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+          {inboxUsers.length > 0 ? (
+            inboxUsers.map(user => (
+              <button key={user.id} onClick={() => setActiveChat(user)} className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-all ${activeChat?.id === user.id ? 'bg-gray-100' : ''}`}>
+                 <div className="relative shrink-0">
+                   <img src={user.avatar} className="w-12 h-12 rounded-full object-cover border shadow-sm" alt="" />
+                   <div className="absolute bottom-0.5 right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                 </div>
+                 <div className="text-left flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline">
+                      <h4 className="font-bold text-gray-900 truncate text-sm">{user.username}</h4>
+                      <span className="text-[10px] text-gray-400 font-medium">
+                        {user.lastMessageTime ? new Date(user.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                    </div>
+                    <p className={`text-xs truncate mt-0.5 ${!user.isMe ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
+                      {user.isMe && <i className="fa-solid fa-check-double text-[10px] mr-1 text-blue-400"></i>}
+                      {user.lastMessage}
+                    </p>
+                 </div>
+              </button>
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full p-6 text-center text-gray-400">
+              <i className="fa-solid fa-comments text-4xl mb-3 opacity-20"></i>
+              <p className="text-xs font-bold">No chats yet. Start a conversation!</p>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className={`flex-1 flex flex-col bg-white ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
+      {/* Active Chat Window */}
+      <div className={`flex-1 flex flex-col bg-[#e8f5e9] relative ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
         {activeChat ? (
           <>
-            <header className="p-3 border-b flex items-center justify-between bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-10">
+            <header className="h-16 border-b flex items-center justify-between bg-[#b71c1c] px-4 shadow-sm z-10 text-white">
               <div className="flex items-center gap-3">
-                <button onClick={() => setActiveChat(null)} className="md:hidden text-red-600 p-2"><i className="fa-solid fa-arrow-left text-xl"></i></button>
-                <img src={activeChat.avatar} className="w-10 h-10 rounded-full object-cover border" alt="" />
+                <button onClick={() => setActiveChat(null)} className="md:hidden text-white p-2 -ml-2"><i className="fa-solid fa-arrow-left text-lg"></i></button>
+                <img src={activeChat.avatar} className="w-10 h-10 rounded-full object-cover border border-white/20 shadow-sm" alt="" />
                 <div>
-                  <h3 className="font-black text-gray-900 leading-tight">{activeChat.username}</h3>
-                  <p className="text-[9px] text-green-600 font-bold uppercase tracking-tighter">● Online</p>
+                  <h3 className="font-bold text-white leading-tight text-sm">{activeChat.username}</h3>
+                  <p className="text-[10px] text-white/70 font-medium">online</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => onStartCall?.('audio', activeChat)} className="w-10 h-10 rounded-full flex items-center justify-center text-[#b71c1c] hover:bg-red-50 transition-all active:scale-90"><i className="fa-solid fa-phone text-lg"></i></button>
-                <button onClick={() => onStartCall?.('video', activeChat)} className="w-10 h-10 rounded-full flex items-center justify-center text-[#b71c1c] hover:bg-red-50 transition-all active:scale-90"><i className="fa-solid fa-video text-lg"></i></button>
+              <div className="flex items-center gap-4">
+                <button onClick={() => onStartCall?.('video', activeChat)} className="text-white/80 hover:text-white transition-all"><i className="fa-solid fa-video"></i></button>
+                <button onClick={() => onStartCall?.('audio', activeChat)} className="text-white/80 hover:text-white transition-all"><i className="fa-solid fa-phone"></i></button>
+                <button className="text-white/80 hover:text-white transition-all"><i className="fa-solid fa-ellipsis-vertical"></i></button>
               </div>
             </header>
 
-            <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto bg-[#f8f9fa] flex flex-col gap-2">
-              {messages.map((m) => {
+            <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-repeat">
+              {messages.map((m, idx) => {
                 const isMe = String(m.sender_id) === String(currentUser.id);
+                const prevMsg = idx > 0 ? messages[idx-1] : null;
+                const isSameSender = prevMsg && String(prevMsg.sender_id) === String(m.sender_id);
+                
                 return (
-                  <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] p-3 rounded-2xl text-sm font-bold shadow-sm ${isMe ? 'bg-red-600 text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border'}`}>
-                      {m.content}
+                  <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${!isSameSender ? 'mt-2' : 'mt-0.5'}`}>
+                    <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'}`}>
+                      {!isMe && !isSameSender && <span className="block text-[10px] font-bold text-red-600 mb-0.5">{activeChat.username}</span>}
+                      <p className="leading-relaxed">{m.content}</p>
+                      <div className="flex items-center justify-end gap-1 mt-1">
+                        <span className="text-[9px] text-gray-400 font-medium">
+                          {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {isMe && <i className="fa-solid fa-check-double text-[10px] text-blue-400"></i>}
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <div className="p-4 border-t bg-white flex items-center gap-3 pb-8 md:pb-4">
-              <input type="text" placeholder="Aa" className="flex-1 bg-gray-100 rounded-full px-5 py-2.5 outline-none font-bold text-sm focus:bg-gray-200" value={msgInput} onChange={(e) => setMsgInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} />
-              <button onClick={sendMessage} className={`w-10 h-10 rounded-full flex items-center justify-center ${msgInput.trim() ? 'bg-red-600 text-white shadow-md active:scale-90' : 'text-gray-300'}`}>
-                <i className="fa-solid fa-paper-plane text-lg"></i>
+            <div className="p-2 bg-[#1b5e20] flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-regular fa-face-smile text-xl"></i></button>
+                <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-solid fa-paperclip text-lg"></i></button>
+              </div>
+              <input 
+                type="text" 
+                placeholder="Type a message" 
+                className="flex-1 bg-white rounded-lg px-4 py-2.5 outline-none text-sm shadow-sm text-green-900 placeholder:text-green-800/50" 
+                value={msgInput} 
+                onChange={(e) => setMsgInput(e.target.value)} 
+                onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
+              />
+              <button 
+                onClick={sendMessage} 
+                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${msgInput.trim() ? 'bg-[#b71c1c] text-white shadow-md' : 'text-white/50'}`}
+              >
+                <i className={`fa-solid ${msgInput.trim() ? 'fa-paper-plane' : 'fa-microphone'} text-lg`}></i>
               </button>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50 text-center p-6">
-            <i className="fa-solid fa-bolt-lightning text-4xl text-red-500 opacity-20 animate-bounce mb-4"></i>
-            <h3 className="text-xl font-black text-gray-900">AddaSangi Messenger</h3>
-            <p className="font-bold text-sm text-gray-500 mt-2">চ্যাট করার জন্য কাউকে সিলেক্ট করুন।</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-[#f8f9fa] text-center p-10">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+              <i className="fa-solid fa-laptop text-5xl text-gray-200"></i>
+            </div>
+            <h3 className="text-2xl font-light text-gray-600">AddaSangi Web</h3>
+            <p className="max-w-xs text-sm text-gray-500 mt-4 leading-relaxed">
+              Send and receive messages without keeping your phone online.<br/>
+              Use AddaSangi on up to 4 linked devices and 1 phone at the same time.
+            </p>
+            <div className="mt-auto flex items-center gap-2 text-xs text-gray-400">
+              <i className="fa-solid fa-lock"></i>
+              <span>End-to-end encrypted</span>
+            </div>
           </div>
         )}
       </div>

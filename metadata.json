@@ -1,6 +1,6 @@
 {
   "name": "AddaSangi",
-  "description": "A vibrant red and green themed social platform for community gathering, sharing stories, and real-time connections.",
+  "description": "A vibrant red and green themed chat platform for real-time connections.",
   "requestFramePermissions": [
     "camera",
     "microphone"

@@ -66,14 +66,14 @@ const Profile: React.FC<ProfileProps> = ({
   const displayCover = user.coverUrl || `https://picsum.photos/seed/cover-${user.id}/1200/400`;
 
   return (
-    <div className="animate-in fade-in duration-300 bg-[#f0f2f5] min-h-screen pb-20">
-      <div className="bg-white pb-4 shadow-sm border-b">
-        <div className="h-44 md:h-80 bg-gray-200 relative overflow-hidden group">
+    <div className="animate-in fade-in duration-300 bg-[#e8f5e9] min-h-screen pb-20">
+      <div className="bg-white pb-4 shadow-sm border-b border-green-100">
+        <div className="h-44 md:h-80 bg-green-50 relative overflow-hidden group">
           <img src={displayCover} className="w-full h-full object-cover" alt="cover" />
           {isOwnProfile && (
             <button 
               onClick={() => setIsEditModalOpen(true)}
-              className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-md p-2 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-2 hover:bg-black/70 transition-all"
+              className="absolute bottom-4 right-4 bg-[#b71c1c]/80 backdrop-blur-md p-2 px-4 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-2 hover:bg-[#b71c1c] transition-all"
             >
               <i className="fa-solid fa-camera"></i> Edit Cover
             </button>
@@ -85,7 +85,7 @@ const Profile: React.FC<ProfileProps> = ({
             {isOwnProfile && (
               <button 
                 onClick={() => setIsEditModalOpen(true)}
-                className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute inset-0 bg-[#1b5e20]/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <i className="fa-solid fa-camera text-white text-2xl"></i>
               </button>
@@ -96,7 +96,7 @@ const Profile: React.FC<ProfileProps> = ({
               {user.username}
               {user.isVerified && <i className="fa-solid fa-circle-check text-blue-500 text-xl"></i>}
             </h2>
-            <p className="text-gray-500 font-bold text-sm">{posts.length} Posts · Member Since 2024</p>
+            <p className="text-green-700 font-bold text-sm">{posts.length} Posts · Member Since 2026</p>
           </div>
           {isOwnProfile && (
             <div className="flex gap-2 mb-4 md:mb-6">
@@ -110,13 +110,13 @@ const Profile: React.FC<ProfileProps> = ({
 
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-4 mt-4 px-2">
         <div className="w-full md:w-[360px] flex flex-col gap-4">
-          <div className="bg-white p-4 shadow-sm rounded-xl border">
-            <h3 className="text-xl font-black text-gray-900 mb-4">Intro</h3>
+          <div className="bg-white p-4 shadow-sm rounded-xl border border-green-100">
+            <h3 className="text-xl font-black text-[#1b5e20] mb-4">Intro</h3>
             <div className="space-y-4">
-              <div className="text-gray-800 font-bold text-center bg-gray-50 p-4 rounded-xl border-2 border-dashed border-gray-200">
+              <div className="text-green-900 font-bold text-center bg-[#e8f5e9] p-4 rounded-xl border-2 border-dashed border-green-200">
                 {user.bio || "Write something interesting about yourself!"}
               </div>
-              <div className="border-t pt-4 space-y-4">
+              <div className="border-t border-green-50 pt-4 space-y-4">
                 <div className="flex items-center gap-4 text-sm font-bold text-gray-700">
                   <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center text-red-600">
                     <i className="fa-solid fa-location-dot"></i>
@@ -135,10 +135,10 @@ const Profile: React.FC<ProfileProps> = ({
         </div>
 
         <div className="flex-1 flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-xl border shadow-sm">
-            <h3 className="text-lg font-black mb-4 flex items-center justify-between">
+          <div className="bg-white p-4 rounded-xl border border-green-100 shadow-sm">
+            <h3 className="text-lg font-black text-[#1b5e20] mb-4 flex items-center justify-between">
               Timeline
-              <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-500">Your Activities</span>
+              <span className="text-xs bg-green-50 px-2 py-1 rounded text-green-600">Your Activities</span>
             </h3>
             {posts.length > 0 ? (
               posts.map(post => (
