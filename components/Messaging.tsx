@@ -151,9 +151,22 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     const content = msgInput;
     setMsgInput('');
     setIsSending(true);
-    const tempMsg = { id: 'temp-' + Date.now(), sender_id: currentUser.id, receiver_id: activeChat.id, content: content, created_at: new Date().toISOString(), is_sending: true };
+    const tempMsg = { 
+      id: 'temp-' + Date.now(), 
+      sender_id: currentUser.id, 
+      receiver_id: activeChat.id, 
+      content: content, 
+      created_at: new Date().toISOString(), 
+      is_sending: true,
+      is_seen: false 
+    };
     setMessages(prev => [...prev, tempMsg]);
-    const { error, data } = await supabase.from('messages').insert({ sender_id: currentUser.id, receiver_id: activeChat.id, content: content }).select();
+    const { error, data } = await supabase.from('messages').insert({ 
+      sender_id: currentUser.id, 
+      receiver_id: activeChat.id, 
+      content: content,
+      is_seen: false 
+    }).select();
     setIsSending(false);
     if (error) setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
     else if (data) setMessages(prev => prev.map(m => m.id === tempMsg.id ? data[0] : m));
@@ -202,7 +215,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                     </div>
                     <p className={`text-xs truncate mt-0.5 ${(user.isMe === false && user.isSeen !== true) ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
                       {user.isMe && (
-                        <i className={`fa-solid fa-check-double text-[10px] mr-1 ${user.isSeen === true ? 'text-blue-400' : 'text-gray-400'}`}></i>
+                        user.isSeen === true ? 
+                        <span className="text-[10px] mr-1 text-blue-500 font-medium">Seen</span> :
+                        <i className="fa-solid fa-check text-[10px] mr-1 text-gray-400"></i>
                       )}
                       {user.lastMessage}
                     </p>
@@ -254,7 +269,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                           {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {isMe && (
-                          <i className={`fa-solid fa-check-double text-[10px] ${m.is_seen === true ? 'text-blue-400' : 'text-gray-400'}`}></i>
+                          m.is_seen === true ? 
+                          <span className="text-[9px] text-blue-500 font-bold ml-1">Seen</span> :
+                          <i className="fa-solid fa-check text-[10px] text-gray-400 ml-1"></i>
                         )}
                       </div>
                     </div>
