@@ -7,6 +7,7 @@ interface MessagePreview extends User {
   lastMessage?: string;
   lastMessageTime?: string;
   isMe?: boolean;
+  isSeen?: boolean;
 }
 
 interface MessagingProps {
@@ -42,7 +43,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
             contactMap.set(otherId, {
               lastMessage: m.content,
               lastMessageTime: m.created_at,
-              isMe: String(m.sender_id) === String(currentUser.id)
+              isMe: String(m.sender_id) === String(currentUser.id),
+              isSeen: m.is_seen
             });
           }
         });
@@ -59,7 +61,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                 avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
                 lastMessage: meta.lastMessage,
                 lastMessageTime: meta.lastMessageTime,
-                isMe: meta.isMe
+                isMe: meta.isMe,
+                isSeen: meta.isSeen
               };
             }).sort((a, b) => new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime());
             setInboxUsers(formattedInbox);
@@ -83,16 +86,40 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
               const activeId = String(activeChat.id);
               if (senderId === activeId || receiverId === activeId) {
                 setMessages(prev => prev.find(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
+                // If I am the receiver and this chat is active, mark as seen
+                if (receiverId === myId && senderId === activeId) {
+                  markAsSeen();
+                }
               }
             }
           }
         }
-      ).subscribe((status) => {
+      )
+      .on('postgres_changes' as any, { event: 'UPDATE', table: 'messages' }, (payload: any) => {
+        const updatedMsg = payload.new;
+        setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
+        fetchInbox();
+      })
+      .subscribe((status) => {
         if (status === 'SUBSCRIBED') setRealtimeStatus('online');
         else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setRealtimeStatus('error');
       });
     return () => { supabase.removeChannel(channel); };
   }, [currentUser.id, activeChat?.id]);
+
+  const markAsSeen = async () => {
+    if (!activeChat) return;
+    try {
+      await supabase
+        .from('messages')
+        .update({ is_seen: true })
+        .eq('sender_id', activeChat.id)
+        .eq('receiver_id', currentUser.id)
+        .eq('is_seen', false);
+    } catch (err) {
+      console.error("Error marking as seen:", err);
+    }
+  };
 
   useEffect(() => {
     if (!activeChat) return;
@@ -102,7 +129,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .select('*')
         .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`)
         .order('created_at', { ascending: true });
-      if (data) setMessages(data);
+      if (data) {
+        setMessages(data);
+        markAsSeen();
+      }
     };
     fetchMessages();
   }, [activeChat?.id, currentUser.id]);
@@ -163,8 +193,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                         {user.lastMessageTime ? new Date(user.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
                     </div>
-                    <p className={`text-xs truncate mt-0.5 ${!user.isMe ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
-                      {user.isMe && <i className="fa-solid fa-check-double text-[10px] mr-1 text-blue-400"></i>}
+                    <p className={`text-xs truncate mt-0.5 ${(!user.isMe && !user.isSeen) ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
+                      {user.isMe && (
+                        <i className={`fa-solid fa-check-double text-[10px] mr-1 ${user.isSeen ? 'text-blue-400' : 'text-gray-400'}`}></i>
+                      )}
                       {user.lastMessage}
                     </p>
                  </div>
@@ -214,7 +246,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                         <span className="text-[9px] text-gray-400 font-medium">
                           {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {isMe && <i className="fa-solid fa-check-double text-[10px] text-blue-400"></i>}
+                        {isMe && (
+                          <i className={`fa-solid fa-check-double text-[10px] ${m.is_seen ? 'text-blue-400' : 'text-gray-400'}`}></i>
+                        )}
                       </div>
                     </div>
                   </div>
