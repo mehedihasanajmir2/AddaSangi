@@ -114,12 +114,19 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .from('messages')
         .update({ is_seen: true })
         .eq('sender_id', activeChat.id)
-        .eq('receiver_id', currentUser.id)
-        .eq('is_seen', false);
+        .eq('receiver_id', currentUser.id);
     } catch (err) {
       console.error("Error marking as seen:", err);
     }
   };
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (activeChat) markAsSeen();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [activeChat?.id]);
 
   useEffect(() => {
     if (!activeChat) return;
@@ -193,9 +200,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                         {user.lastMessageTime ? new Date(user.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
                     </div>
-                    <p className={`text-xs truncate mt-0.5 ${(!user.isMe && !user.isSeen) ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
+                    <p className={`text-xs truncate mt-0.5 ${(user.isMe === false && user.isSeen !== true) ? 'font-bold text-gray-800' : 'text-gray-500'}`}>
                       {user.isMe && (
-                        <i className={`fa-solid fa-check-double text-[10px] mr-1 ${user.isSeen ? 'text-blue-400' : 'text-gray-400'}`}></i>
+                        <i className={`fa-solid fa-check-double text-[10px] mr-1 ${user.isSeen === true ? 'text-blue-400' : 'text-gray-400'}`}></i>
                       )}
                       {user.lastMessage}
                     </p>
@@ -247,7 +254,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                           {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {isMe && (
-                          <i className={`fa-solid fa-check-double text-[10px] ${m.is_seen ? 'text-blue-400' : 'text-gray-400'}`}></i>
+                          <i className={`fa-solid fa-check-double text-[10px] ${m.is_seen === true ? 'text-blue-400' : 'text-gray-400'}`}></i>
                         )}
                       </div>
                     </div>
