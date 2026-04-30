@@ -25,6 +25,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'online' | 'error'>('connecting');
   const [inboxError, setInboxError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeChatRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
 
   useEffect(() => {
     if (targetUser) {
@@ -60,21 +65,22 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         const uids = Array.from(contactMap.keys());
         if (uids.length > 0) {
           const { data: profiles } = await supabase.from('profiles').select('*').in('id', uids);
-          if (profiles) {
-            const formattedInbox = profiles.map(p => {
-              const meta = contactMap.get(String(p.id));
-              return {
-                id: p.id,
-                username: p.full_name || 'User',
-                avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
-                lastMessage: meta.lastMessage,
-                lastMessageTime: meta.lastMessageTime,
-                isMe: meta.isMe,
-                isSeen: meta.isSeen
-              };
-            }).sort((a, b) => new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime());
-            setInboxUsers(formattedInbox);
-          }
+          
+          const formattedInbox = uids.map(uid => {
+            const profile = profiles?.find(p => String(p.id) === uid);
+            const meta = contactMap.get(uid);
+            return {
+              id: uid,
+              username: profile?.full_name || 'User',
+              avatar: profile?.avatar_url || `https://picsum.photos/seed/${uid}/200`,
+              lastMessage: meta.lastMessage,
+              lastMessageTime: meta.lastMessageTime,
+              isMe: meta.isMe,
+              isSeen: meta.isSeen
+            };
+          }).sort((a, b) => new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime());
+          
+          setInboxUsers(formattedInbox);
         } else {
           setInboxUsers([]);
         }
@@ -87,8 +93,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
   useEffect(() => {
     fetchInbox();
-    // Unique channel for this user's messaging, using a consistent name
-    const channelName = `realtime_messages_${currentUser.id}`;
+    
+    // Subscribe using a more stable channel
+    const channelName = `realtime_messages_main_${currentUser.id}`;
     const channel = supabase.channel(channelName)
       .on('postgres_changes' as any, { 
         event: '*', 
@@ -115,42 +122,51 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         handleIncomingMessage(payload.payload);
       })
       .subscribe((status) => {
+        console.log("Subscription status:", status);
         setRealtimeStatus(status === 'SUBSCRIBED' ? 'online' : 'connecting');
       });
 
-    return () => { supabase.removeChannel(channel); };
-  }, [currentUser.id, activeChat?.id]);
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
+  }, [currentUser.id]);
 
-  const handleIncomingMessage = async (newMsg: any) => {
+  const handleIncomingMessage = (newMsg: any) => {
     const myId = String(currentUser.id);
     const senderId = String(newMsg.sender_id);
     const receiverId = String(newMsg.receiver_id);
     
-    // Refresh inbox list for both sender and receiver
+    // Always refresh inbox list
     fetchInbox();
 
-    if (activeChat) {
-      const activeId = String(activeChat.id);
-      // If the message belongs to the current open chat
-      if (senderId === activeId || (senderId === myId && receiverId === activeId)) {
+    const currentActiveChat = activeChatRef.current;
+    if (currentActiveChat) {
+      const activeId = String(currentActiveChat.id);
+      // Check if this message belongs to the current chat
+      const isFromActiveChat = senderId === activeId && receiverId === myId;
+      const isToActiveChat = senderId === myId && receiverId === activeId;
+
+      if (isFromActiveChat || isToActiveChat) {
         setMessages(prev => {
           if (prev.some(m => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
-        if (receiverId === myId && senderId === activeId) {
-          markAsSeen();
+        if (isFromActiveChat) {
+          markAsSeen(activeId);
         }
       }
     }
   };
 
-  const markAsSeen = async () => {
-    if (!activeChat) return;
+  const markAsSeen = async (chatId?: string) => {
+    const targetId = chatId || (activeChatRef.current ? String(activeChatRef.current.id) : null);
+    if (!targetId) return;
+
     try {
       await supabase
         .from('messages')
         .update({ is_seen: true })
-        .eq('sender_id', activeChat.id)
+        .eq('sender_id', targetId)
         .eq('receiver_id', currentUser.id)
         .eq('is_seen', false);
     } catch (err) {
@@ -221,17 +237,17 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         setMessages(prev => prev.map(m => m.id === tempId ? { ...sentMsg, is_sending: false } : m));
         fetchInbox();
         
-        // Broadcast to receiver to ensure instant update even if DB sync is slow
-        const receiverChannel = supabase.channel(`realtime_messages_${receiverId}`);
-        receiverChannel.subscribe((status) => {
+        // Broadcast to receiver's general channel
+        const receiverChannelName = `realtime_messages_main_${receiverId}`;
+        const broadcastChannel = supabase.channel(`broadcast_${Date.now()}`);
+        broadcastChannel.subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            receiverChannel.send({
+            supabase.channel(receiverChannelName).send({
               type: 'broadcast',
               event: 'new_message',
               payload: sentMsg
-            }).then(() => {
-              // Cleanup channel after sending
-              setTimeout(() => supabase.removeChannel(receiverChannel), 2000);
+            }).finally(() => {
+              supabase.removeChannel(broadcastChannel);
             });
           }
         });
