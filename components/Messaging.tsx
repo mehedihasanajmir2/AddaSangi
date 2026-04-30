@@ -29,8 +29,18 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const [hasBlockedMe, setHasBlockedMe] = useState(false);
   const [myBlockedIds, setMyBlockedIds] = useState<string[]>([]);
   const [blockedMeIds, setBlockedMeIds] = useState<string[]>([]);
+  const myBlockedIdsRef = useRef<string[]>([]);
+  const blockedMeIdsRef = useRef<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeChatRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    myBlockedIdsRef.current = myBlockedIds;
+  }, [myBlockedIds]);
+
+  useEffect(() => {
+    blockedMeIdsRef.current = blockedMeIds;
+  }, [blockedMeIds]);
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -143,19 +153,30 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       .on('broadcast', { event: 'new_message' }, (payload) => {
         if (payload.payload) handleIncomingMessage(payload.payload);
       })
+      .on('broadcast', { event: 'block_update' }, () => {
+        fetchInbox();
+        if (activeChatRef.current) {
+          const chat = { ...activeChatRef.current };
+          setActiveChat(chat);
+        }
+      })
       .subscribe((status) => {
         console.log("Subscription status:", status);
         setRealtimeStatus(status === 'SUBSCRIBED' ? 'online' : 'connecting');
       });
 
-    // Subscribe to block list changes
+    // Subscribe to block list updates and general database changes
     const blockChannel = supabase.channel(`blocks_realtime_${currentUser.id}`)
-      .on('postgres_changes' as any, { event: '*', table: 'user_blocks', schema: 'public' }, () => {
-        fetchInbox();
+      .on('postgres_changes' as any, { 
+        event: '*', 
+        table: 'user_blocks', 
+        schema: 'public' 
+      }, async () => {
+        await fetchInbox();
         if (activeChatRef.current) {
-          // Re-trigger the block status check in the other useEffect
-          const chat = activeChatRef.current;
-          setActiveChat({ ...chat }); 
+          // Force a re-render of block status if currently chatting
+          const chat = { ...activeChatRef.current };
+          setActiveChat(chat);
         }
       })
       .subscribe();
@@ -171,9 +192,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     const senderId = String(newMsg.sender_id);
     const receiverId = String(newMsg.receiver_id);
 
-    // SILENTLY IGNORE messages from blocked users
-    // If I blocked them or they blocked me, ignore the message
-    if (myBlockedIds.includes(senderId) || blockedMeIds.includes(senderId)) {
+    // SILENTLY IGNORE messages from blocked users using the latest REF values
+    if (myBlockedIdsRef.current.includes(senderId) || blockedMeIdsRef.current.includes(senderId)) {
       console.log("Message blocked from:", senderId);
       return;
     }
@@ -370,7 +390,17 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
           .insert({ blocker_id: currentUser.id, blocked_id: activeChat.id });
         setIsBlocked(true);
       }
+      
+      // Broadcast block event to the other user
+      const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
+      supabase.channel(receiverChannelName).send({
+        type: 'broadcast',
+        event: 'block_update',
+        payload: { blocker_id: currentUser.id, blocked_id: activeChat.id, status: !isBlocked }
+      });
+
       setShowMenu(false);
+      fetchInbox();
     } catch (err) {
       console.error("Block/Unblock Error:", err);
     }
