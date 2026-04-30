@@ -18,6 +18,7 @@ interface MessagingProps {
 
 const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartCall }) => {
   const [activeChat, setActiveChat] = useState<User | null>(targetUser || null);
+  const channelRef = useRef<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [msgInput, setMsgInput] = useState('');
   const [inboxUsers, setInboxUsers] = useState<MessagePreview[]>([]);
@@ -137,21 +138,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         const msg = payload.new || payload.old;
         if (!msg) return;
 
-        const myId = String(currentUser.id);
-        const senderId = String(msg.sender_id);
-        const receiverId = String(msg.receiver_id);
-
-        if (senderId === myId || receiverId === myId) {
-          if (payload.eventType === 'INSERT') {
-            handleIncomingMessage(msg);
-          } else if (payload.eventType === 'UPDATE') {
-            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m));
-            fetchInbox();
-          } else if (payload.eventType === 'DELETE') {
-            const deletedId = payload.old.id;
-            setMessages(prev => prev.filter(m => m.id !== deletedId));
-            fetchInbox();
-          }
+        if (payload.eventType === 'UPDATE') {
+          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m));
+          fetchInbox();
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.old.id;
+          setMessages(prev => prev.filter(m => m.id !== deletedId));
+          fetchInbox();
         }
       })
       .on('broadcast', { event: 'new_message' }, (payload) => {
@@ -192,9 +185,12 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       })
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => { 
       supabase.removeChannel(channel);
       supabase.removeChannel(blockChannel);
+      channelRef.current = null;
     };
   }, [currentUser.id]);
 
@@ -383,10 +379,14 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const deleteChat = async () => {
     if (!activeChat || !window.confirm('Are you sure you want to delete this conversation?')) return;
     try {
-      await supabase
-        .from('messages')
-        .delete()
-        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`);
+      const myId = currentUser.id;
+      const otherId = activeChat.id;
+      
+      // Separate deletes to avoid complex .or filter type casting issues
+      const p1 = supabase.from('messages').delete().eq('sender_id', myId).eq('receiver_id', otherId);
+      const p2 = supabase.from('messages').delete().eq('sender_id', otherId).eq('receiver_id', myId);
+      
+      await Promise.all([p1, p2]);
       
       setMessages([]);
       fetchInbox();
@@ -402,7 +402,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       // Soft Delete: Update content to a special flag
       const { error } = await supabase
         .from('messages')
-        .update({ content: '[REMOVED]', updated_at: new Date().toISOString() })
+        .update({ content: '[REMOVED]' })
         .eq('id', msgId);
       
       if (error) {
@@ -417,17 +417,17 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       // Optimistic update for sender's UI
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: '[REMOVED]' } : m));
 
-      // Realtime subscription will handle the local state update automatically via 'UPDATE' event
-      // But we broadcast for instant UI feedback for the recipient
+      // Broadcast for instant UI feedback for the recipient using THEIR channel
       if (activeChat) {
         const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
-        const tempChannel = supabase.channel(`temp_del_${Date.now()}`);
+        // We create a temporary channel reference to send the broadcast to the recipient
+        const tempChannel = supabase.channel(`temp_broadcast_${Date.now()}`);
         tempChannel.subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            supabase.channel(receiverChannelName).send({
+            tempChannel.send({
               type: 'broadcast',
               event: 'update_message',
-              payload: { id: msgId, content: '[REMOVED]', updated_at: new Date().toISOString() }
+              payload: { id: msgId, content: '[REMOVED]' }
             }).finally(() => {
               supabase.removeChannel(tempChannel);
             });
