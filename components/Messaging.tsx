@@ -112,7 +112,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
           if (!contactMap.has(otherId)) {
             contactMap.set(otherId, {
-              lastMessage: m.content === '[REMOVED]' ? 'Sms removed' : m.content,
+              lastMessage: m.content === '[REMOVED]' ? 'Sms removed' : 
+                          m.content.startsWith('IMAGE_URL:') ? '📷 Photo' :
+                          m.content.startsWith('AUDIO_URL:') ? '🎤 Voice message' :
+                          m.content,
               lastMessageTime: m.created_at,
               isMe: String(m.sender_id) === String(currentUser.id),
               isSeen: m.is_seen
