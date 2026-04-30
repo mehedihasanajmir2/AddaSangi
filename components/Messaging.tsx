@@ -35,7 +35,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeChatRef = useRef<User | null>(null);
   const [longPressedId, setLongPressedId] = useState<string | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showReactionId, setShowReactionId] = useState<string | null>(null);
   const touchTimerRef = useRef<any>(null);
+
+  const COMMON_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🔥', '🙏', '🎉'];
 
   useEffect(() => {
     myBlockedIdsRef.current = myBlockedIds;
@@ -513,11 +517,71 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     }
   };
 
+  const addReaction = async (msgId: string, emoji: string) => {
+    try {
+      const msg = messages.find(m => m.id === msgId);
+      if (!msg) return;
+
+      const currentReactions = msg.reactions || {};
+      const myId = currentUser.id;
+      
+      // Toggle reaction logic
+      const newReactions = { ...currentReactions };
+      if (!newReactions[emoji]) newReactions[emoji] = [];
+      
+      const userIndex = newReactions[emoji].indexOf(myId);
+      if (userIndex > -1) {
+        // Remove reaction
+        newReactions[emoji].splice(userIndex, 1);
+        if (newReactions[emoji].length === 0) delete newReactions[emoji];
+      } else {
+        // Add reaction
+        newReactions[emoji].push(myId);
+        // Optionally remove this user from other emojis if you want one reaction per user
+      }
+
+      // 1. Optimistic Update
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m));
+      setShowReactionId(null);
+      setLongPressedId(null);
+
+      // 2. Database Update
+      const { error } = await supabase
+        .from('messages')
+        .update({ reactions: newReactions })
+        .eq('id', msgId);
+
+      if (error) throw error;
+
+      // 3. Broadcast for instant feedback
+      if (activeChat) {
+        const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
+        const bc = supabase.channel(receiverChannelName);
+        bc.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            bc.send({
+              type: 'broadcast',
+              event: 'update_message',
+              payload: { id: msgId, reactions: newReactions }
+            }).then(() => {
+              supabase.removeChannel(bc);
+            });
+          }
+        });
+      }
+    } catch (err: any) {
+      console.error("Reaction Error:", err.message);
+    }
+  };
+
   const handleTouchStart = (id: string, isMe: boolean, isRemoved: boolean) => {
-    if (!isMe || isRemoved) return;
+    if (isRemoved) return;
     if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
     touchTimerRef.current = setTimeout(() => {
-      setLongPressedId(id);
+      if (isMe) {
+        setLongPressedId(id);
+      }
+      setShowReactionId(id); // Everyone can react
       if (navigator.vibrate) navigator.vibrate(50); // Haptic feedback
     }, 600);
   };
@@ -527,7 +591,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   };
 
   useEffect(() => {
-    const handleClickOutside = () => setLongPressedId(null);
+    const handleClickOutside = () => {
+      setLongPressedId(null);
+      setShowEmojiPicker(false);
+      setShowReactionId(null);
+    };
     window.addEventListener('mousedown', handleClickOutside);
     window.addEventListener('touchstart', handleClickOutside);
     return () => {
@@ -664,6 +732,19 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                     onTouchMove={handleTouchEnd}
                   >
                     <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isRemoved ? 'bg-gray-100 text-gray-400 border border-gray-200 italic' : isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'} ${longPressedId === m.id ? 'ring-2 ring-red-400' : ''}`}>
+                      {showReactionId === m.id && (
+                        <div className="absolute -top-10 left-0 bg-white shadow-xl border rounded-full px-2 py-1 flex gap-2 z-20 animate-in fade-in zoom-in duration-200">
+                          {COMMON_EMOJIS.map(emoji => (
+                            <button 
+                              key={emoji} 
+                              onClick={(e) => { e.stopPropagation(); addReaction(m.id, emoji); }}
+                              className="hover:scale-125 transition-transform text-lg"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {!isMe && !isSameSender && <span className="block text-[10px] font-bold text-red-600 mb-0.5">{activeChat.username}</span>}
                       <div className="flex justify-between items-start gap-2">
                         <p className="leading-relaxed flex-1">
@@ -674,19 +755,47 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                             </span>
                           ) : m.content}
                         </p>
-                        {isMe && !isRemoved && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteMessage(m.id);
-                            }}
-                            className={`${longPressedId === m.id ? 'opacity-100 scale-125' : 'opacity-0'} md:group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-[12px] ml-1 pt-1 shrink-0 bg-white/50 rounded-full w-6 h-6 flex items-center justify-center`}
-                            title="Remove message"
-                          >
-                            <i className="fa-solid fa-trash-can"></i>
-                          </button>
+                        {!isRemoved && (
+                          <div className="flex items-center gap-1 ml-1 pt-1 shrink-0">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setShowReactionId(m.id); }}
+                              className="md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-green-600 transition-all text-[12px] bg-white/50 rounded-full w-6 h-6 flex items-center justify-center mr-1"
+                              title="React"
+                            >
+                              <i className="fa-regular fa-face-smile"></i>
+                            </button>
+                            {isMe && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteMessage(m.id);
+                                }}
+                                className={`${longPressedId === m.id ? 'opacity-100 scale-125' : 'opacity-0'} md:group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-[12px] shrink-0 bg-white/50 rounded-full w-6 h-6 flex items-center justify-center`}
+                                title="Remove message"
+                              >
+                                <i className="fa-solid fa-trash-can"></i>
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
+                      
+                      {/* Message Reactions */}
+                      {m.reactions && Object.keys(m.reactions).length > 0 && (
+                        <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                          {Object.entries(m.reactions as Record<string, string[]>).map(([emoji, users]) => (
+                            <button 
+                              key={emoji}
+                              onClick={(e) => { e.stopPropagation(); addReaction(m.id, emoji); }}
+                              className={`text-[10px] bg-gray-50 border rounded-full px-1.5 py-0.5 flex items-center gap-1 hover:bg-white transition-colors ${users.includes(currentUser.id) ? 'border-green-400 bg-green-50' : 'border-gray-200'}`}
+                            >
+                              <span>{emoji}</span>
+                              {users.length > 1 && <span className="text-[8px] font-bold">{users.length}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-end gap-1 mt-1">
                         <span className="text-[9px] text-gray-400 font-medium">
                           {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -721,9 +830,27 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 relative">
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-full left-0 mb-2 p-2 bg-white rounded-xl shadow-2xl border flex flex-wrap gap-2 w-64 z-50 animate-in slide-in-from-bottom-2">
+                       {['❤️', '👍', '😂', '😮', '😢', '🔥', '🙏', '🎉', '💩', '💯', '✨', '🚀', '😍', '🤔', '👋', '✅', '❌', '🎁', '🎂', '🎈'].map(emoji => (
+                         <button 
+                            key={emoji} 
+                            onClick={(e) => { e.stopPropagation(); setMsgInput(prev => prev + emoji); setShowEmojiPicker(false); }}
+                            className="text-2xl hover:scale-125 transition-transform p-1"
+                          >
+                            {emoji}
+                          </button>
+                       ))}
+                    </div>
+                  )}
                   <div className="flex items-center gap-1">
-                    <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-regular fa-face-smile text-xl"></i></button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
+                      className={`w-10 h-10 flex items-center justify-center transition-colors ${showEmojiPicker ? 'text-yellow-400' : 'text-white/70 hover:text-white'}`}
+                    >
+                      <i className="fa-regular fa-face-smile text-xl"></i>
+                    </button>
                     <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-solid fa-paperclip text-lg"></i></button>
                   </div>
                   <input 
