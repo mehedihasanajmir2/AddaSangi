@@ -147,16 +147,15 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
           } else if (payload.eventType === 'UPDATE') {
             setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m));
             fetchInbox();
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            setMessages(prev => prev.filter(m => m.id !== deletedId));
+            fetchInbox();
           }
         }
       })
       .on('broadcast', { event: 'new_message' }, (payload) => {
         if (payload.payload) handleIncomingMessage(payload.payload);
-      })
-      .on('broadcast', { event: 'delete_message' }, (payload) => {
-        if (payload.payload?.message_id) {
-          setMessages(prev => prev.filter(m => m.id !== payload.payload.message_id));
-        }
       })
       .on('broadcast', { event: 'block_update' }, () => {
         fetchInbox();
@@ -400,16 +399,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       
       if (error) throw error;
       
-      // Notify other user via broadcast
-      if (activeChat) {
-        const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
-        supabase.channel(receiverChannelName).send({
-          type: 'broadcast',
-          event: 'delete_message',
-          payload: { message_id: msgId }
-        });
-      }
-
       setMessages(prev => prev.filter(m => m.id !== msgId));
       fetchInbox();
     } catch (err) {
