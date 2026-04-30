@@ -24,6 +24,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const [isSending, setIsSending] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'online' | 'error'>('connecting');
   const [inboxError, setInboxError] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [hasBlockedMe, setHasBlockedMe] = useState(false);
+  const [myBlockedIds, setMyBlockedIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeChatRef = useRef<User | null>(null);
 
@@ -40,6 +44,14 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const fetchInbox = async () => {
     try {
       setInboxError(null);
+      // Fetch blocked users first
+      const { data: blocks } = await supabase
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', currentUser.id);
+      
+      if (blocks) setMyBlockedIds(blocks.map(b => String(b.blocked_id)));
+
       const { data: msgs, error } = await supabase
         .from('messages')
         .select('*')
@@ -199,13 +211,35 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         markAsSeen();
       }
     };
+
+    const checkBlockStatus = async () => {
+      // Check if I have blocked them
+      const { data: myBlocks } = await supabase
+        .from('user_blocks')
+        .select('*')
+        .eq('blocker_id', currentUser.id)
+        .eq('blocked_id', activeChat.id);
+      
+      setIsBlocked(myBlocks && myBlocks.length > 0);
+
+      // Check if they have blocked me
+      const { data: theirBlocks } = await supabase
+        .from('user_blocks')
+        .select('*')
+        .eq('blocker_id', activeChat.id)
+        .eq('blocked_id', currentUser.id);
+      
+      setHasBlockedMe(theirBlocks && theirBlocks.length > 0);
+    };
+
     fetchMessages();
+    checkBlockStatus();
   }, [activeChat?.id, currentUser.id]);
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
   const sendMessage = async () => {
-    if (!msgInput.trim() || !activeChat || isSending) return;
+    if (!msgInput.trim() || !activeChat || isSending || isBlocked || hasBlockedMe) return;
     
     const content = msgInput;
     const receiverId = activeChat.id;
@@ -269,6 +303,45 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     }
   };
 
+  const deleteChat = async () => {
+    if (!activeChat || !window.confirm('Are you sure you want to delete this conversation?')) return;
+    try {
+      await supabase
+        .from('messages')
+        .delete()
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`);
+      
+      setMessages([]);
+      fetchInbox();
+      setActiveChat(null);
+    } catch (err) {
+      console.error("Delete Chat Error:", err);
+    }
+  };
+
+  const toggleBlock = async () => {
+    if (!activeChat) return;
+    try {
+      if (isBlocked) {
+        await supabase
+          .from('user_blocks')
+          .delete()
+          .eq('blocker_id', currentUser.id)
+          .eq('blocked_id', activeChat.id);
+        setIsBlocked(false);
+      } else {
+        if (!window.confirm(`Block ${activeChat.username}? They won't be able to message you.`)) return;
+        await supabase
+          .from('user_blocks')
+          .insert({ blocker_id: currentUser.id, blocked_id: activeChat.id });
+        setIsBlocked(true);
+      }
+      setShowMenu(false);
+    } catch (err) {
+      console.error("Block/Unblock Error:", err);
+    }
+  };
+
   return (
     <div className="flex h-full bg-white overflow-hidden">
       {/* Inbox / Chat List */}
@@ -305,7 +378,12 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                  </div>
                  <div className="text-left flex-1 min-w-0">
                     <div className="flex justify-between items-baseline">
-                      <h4 className="font-bold text-gray-900 truncate text-sm">{user.username}</h4>
+                      <div className="flex items-center gap-1 min-w-0">
+                        <h4 className="font-bold text-gray-900 truncate text-sm">{user.username}</h4>
+                        {myBlockedIds.includes(String(user.id)) && (
+                          <span className="bg-red-50 text-red-600 text-[8px] px-1 rounded border border-red-100 uppercase font-black shrink-0">Blocked</span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-gray-400 font-medium">
                         {user.lastMessageTime ? new Date(user.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
@@ -343,10 +421,29 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                   <p className="text-[10px] text-white/70 font-medium">online</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 relative">
                 <button onClick={() => onStartCall?.('video', activeChat)} className="text-white/80 hover:text-white transition-all"><i className="fa-solid fa-video"></i></button>
                 <button onClick={() => onStartCall?.('audio', activeChat)} className="text-white/80 hover:text-white transition-all"><i className="fa-solid fa-phone"></i></button>
-                <button className="text-white/80 hover:text-white transition-all"><i className="fa-solid fa-ellipsis-vertical"></i></button>
+                <button onClick={() => setShowMenu(!showMenu)} className="text-white/80 hover:text-white transition-all"><i className="fa-solid fa-ellipsis-vertical"></i></button>
+                
+                {showMenu && (
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-50 text-gray-800">
+                    <button 
+                      onClick={deleteChat}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                    >
+                      <i className="fa-solid fa-trash-can w-5"></i>
+                      Delete Chat
+                    </button>
+                    <button 
+                      onClick={toggleBlock}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <i className={`fa-solid ${isBlocked ? 'fa-user-check' : 'fa-user-slash'} w-5`}></i>
+                      {isBlocked ? 'Unblock User' : 'Block User'}
+                    </button>
+                  </div>
+                )}
               </div>
             </header>
 
@@ -381,25 +478,38 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
               })}
             </div>
 
-            <div className="p-2 bg-[#1b5e20] flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-regular fa-face-smile text-xl"></i></button>
-                <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-solid fa-paperclip text-lg"></i></button>
-              </div>
-              <input 
-                type="text" 
-                placeholder="Type a message" 
-                className="flex-1 bg-white rounded-lg px-4 py-2.5 outline-none text-sm shadow-sm text-green-900 placeholder:text-green-800/50" 
-                value={msgInput} 
-                onChange={(e) => setMsgInput(e.target.value)} 
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
-              />
-              <button 
-                onClick={sendMessage} 
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${msgInput.trim() ? 'bg-[#b71c1c] text-white shadow-md' : 'text-white/50'}`}
-              >
-                <i className={`fa-solid ${msgInput.trim() ? 'fa-paper-plane' : 'fa-microphone'} text-lg`}></i>
-              </button>
+            <div className="p-2 bg-[#1b5e20] flex flex-col gap-2">
+              {(isBlocked || hasBlockedMe) ? (
+                <div className="bg-white/10 p-3 rounded-lg text-center text-white/90 text-sm font-medium flex items-center justify-center gap-2">
+                  <i className="fa-solid fa-ban"></i>
+                  {isBlocked ? (
+                    <span>You have blocked this user. <button onClick={toggleBlock} className="underline font-bold ml-1">Unblock</button></span>
+                  ) : (
+                    <span>This user has blocked you. You cannot send messages.</span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-regular fa-face-smile text-xl"></i></button>
+                    <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-solid fa-paperclip text-lg"></i></button>
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Type a message" 
+                    className="flex-1 bg-white rounded-lg px-4 py-2.5 outline-none text-sm shadow-sm text-green-900 placeholder:text-green-800/50" 
+                    value={msgInput} 
+                    onChange={(e) => setMsgInput(e.target.value)} 
+                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
+                  />
+                  <button 
+                    onClick={sendMessage} 
+                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${msgInput.trim() ? 'bg-[#b71c1c] text-white shadow-md' : 'text-white/50'}`}
+                  >
+                    <i className={`fa-solid ${msgInput.trim() ? 'fa-paper-plane' : 'fa-microphone'} text-lg`}></i>
+                  </button>
+                </div>
+              )}
             </div>
           </>
         ) : (
