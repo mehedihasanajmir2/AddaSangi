@@ -86,7 +86,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
           const otherId = String(m.sender_id) === String(currentUser.id) ? String(m.receiver_id) : String(m.sender_id);
           if (!contactMap.has(otherId)) {
             contactMap.set(otherId, {
-              lastMessage: m.content,
+              lastMessage: m.content === '[REMOVED]' ? 'Sms removed' : m.content,
               lastMessageTime: m.created_at,
               isMe: String(m.sender_id) === String(currentUser.id),
               isSeen: m.is_seen
@@ -421,10 +421,17 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       // But we broadcast for instant UI feedback for the recipient
       if (activeChat) {
         const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
-        supabase.channel(receiverChannelName).send({
-          type: 'broadcast',
-          event: 'update_message',
-          payload: { id: msgId, content: '[REMOVED]', updated_at: new Date().toISOString() }
+        const tempChannel = supabase.channel(`temp_del_${Date.now()}`);
+        tempChannel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            supabase.channel(receiverChannelName).send({
+              type: 'broadcast',
+              event: 'update_message',
+              payload: { id: msgId, content: '[REMOVED]', updated_at: new Date().toISOString() }
+            }).finally(() => {
+              supabase.removeChannel(tempChannel);
+            });
+          }
         });
       }
 
