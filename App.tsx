@@ -322,7 +322,18 @@ const App: React.FC = () => {
           )}
           {activeTab === AppTab.PROFILE && (
             <div className="h-full bg-[#e8f5e9] overflow-y-auto p-4">
-               <Profile user={currentUser} posts={posts.filter(p => p.user.id === currentUser.id)} isOwnProfile={true} currentUser={currentUser} onPostDelete={loadFeed} onLike={loadFeed} onUpdateProfile={() => {}} />
+               <Profile 
+                 user={currentUser} 
+                 posts={posts.filter(p => p.user.id === currentUser.id)} 
+                 isOwnProfile={true} 
+                 currentUser={currentUser} 
+                 onPostDelete={loadFeed} 
+                 onLike={loadFeed} 
+                 onUpdateProfile={(updatedData) => {
+                   setCurrentUser(prev => prev ? { ...prev, ...updatedData } : null);
+                   loadFeed(); // Refresh feed to show updated avatar in posts
+                 }} 
+               />
             </div>
           )}
           {activeTab === AppTab.MENU && (

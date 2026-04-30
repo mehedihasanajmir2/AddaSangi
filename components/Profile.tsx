@@ -2,6 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { User, Post, ReactionType } from '../types';
 import PostCard from './PostCard';
+import { supabase } from '../services/supabaseClient';
 
 interface ProfileProps {
   user: User;
@@ -25,12 +26,16 @@ const Profile: React.FC<ProfileProps> = ({
   currentUser
 }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [editBio, setEditBio] = useState(user.bio || '');
   const [editUsername, setEditUsername] = useState(user.username || '');
   const [editLocation, setEditLocation] = useState(user.location || '');
   const [editAvatar, setEditAvatar] = useState(user.avatar || '');
   const [editCover, setEditCover] = useState(user.coverUrl || '');
   
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,28 +44,83 @@ const Profile: React.FC<ProfileProps> = ({
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64String = reader.result as string;
+        const previewUrl = reader.result as string;
         if (type === 'avatar') {
-          setEditAvatar(base64String);
+          setEditAvatar(previewUrl);
+          setAvatarFile(file);
         } else {
-          setEditCover(base64String);
+          setEditCover(previewUrl);
+          setCoverFile(file);
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleSaveProfile = () => {
-    if (onUpdateProfile) {
-      onUpdateProfile({
-        bio: editBio,
-        full_name: editUsername,
-        location: editLocation,
-        avatar_url: editAvatar,
-        cover_url: editCover
-      });
+  const uploadFile = async (file: File, path: string) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}_${Date.now()}.${fileExt}`;
+    const filePath = `profile_assets/${path}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('messages')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('messages')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  const handleSaveProfile = async () => {
+    setIsUpdating(true);
+    try {
+      let finalAvatarUrl = editAvatar;
+      let finalCoverUrl = editCover;
+
+      if (avatarFile) {
+        finalAvatarUrl = await uploadFile(avatarFile, 'avatars');
+      }
+
+      if (coverFile) {
+        finalCoverUrl = await uploadFile(coverFile, 'covers');
+      }
+
+      // Update in profiles table
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: editUsername,
+          bio: editBio,
+          location: editLocation,
+          avatar_url: finalAvatarUrl,
+          cover_url: finalCoverUrl
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      if (onUpdateProfile) {
+        onUpdateProfile({
+          bio: editBio,
+          username: editUsername,
+          location: editLocation,
+          avatar: finalAvatarUrl,
+          coverUrl: finalCoverUrl
+        });
+      }
+      setIsEditModalOpen(false);
+      setAvatarFile(null);
+      setCoverFile(null);
+    } catch (err: any) {
+      console.error("Update Error:", err.message);
+      alert("Failed to update profile: " + err.message);
+    } finally {
+      setIsUpdating(false);
     }
-    setIsEditModalOpen(false);
   };
 
   const displayCover = user.coverUrl || `https://picsum.photos/seed/cover-${user.id}/1200/400`;
@@ -261,9 +321,14 @@ const Profile: React.FC<ProfileProps> = ({
             <footer className="p-5 border-t bg-white sticky bottom-0">
               <button 
                 onClick={handleSaveProfile} 
-                className="w-full bg-[#b71c1c] text-white py-4 rounded-2xl font-black text-lg shadow-xl hover:shadow-red-200 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+                disabled={isUpdating}
+                className={`w-full bg-[#b71c1c] text-white py-4 rounded-2xl font-black text-lg shadow-xl hover:shadow-red-200 transition-all active:scale-[0.98] flex items-center justify-center gap-3 ${isUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
-                <i className="fa-solid fa-cloud-arrow-up"></i> Save Profile Changes
+                {isUpdating ? (
+                  <><i className="fa-solid fa-circle-notch animate-spin"></i> Updating...</>
+                ) : (
+                  <><i className="fa-solid fa-cloud-arrow-up"></i> Save Profile Changes</>
+                )}
               </button>
             </footer>
           </div>
