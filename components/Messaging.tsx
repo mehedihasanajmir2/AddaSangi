@@ -390,19 +390,34 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   };
 
   const deleteMessage = async (msgId: string) => {
-    if (!window.confirm('Delete this message?')) return;
+    if (!window.confirm('Delete this message for everyone?')) return;
     try {
-      const { error } = await supabase
+      // Optimistic Update
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+
+      const { error, status } = await supabase
         .from('messages')
         .delete()
         .eq('id', msgId);
       
-      if (error) throw error;
-      
-      setMessages(prev => prev.filter(m => m.id !== msgId));
-      fetchInbox();
+      if (error) {
+        // Revert if error
+        fetchInbox(); // Refresh from DB to bring it back in UI
+        if (error.code === '42501') {
+          alert("You don't have permission to delete this message in the database. Please run the SQL code provided.");
+        } else {
+          alert("Delete failed: " + error.message);
+        }
+        return;
+      }
+
+      if (status === 204 || status === 200) {
+        console.log("Message permanently deleted from database");
+        fetchInbox();
+      }
     } catch (err) {
       console.error("Delete Message Error:", err);
+      fetchInbox();
     }
   };
 
