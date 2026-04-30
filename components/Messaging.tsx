@@ -113,13 +113,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
           if (payload.eventType === 'INSERT') {
             handleIncomingMessage(msg);
           } else if (payload.eventType === 'UPDATE') {
-            setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
+            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m));
             fetchInbox();
           }
         }
       })
       .on('broadcast', { event: 'new_message' }, (payload) => {
-        handleIncomingMessage(payload.payload);
+        if (payload.payload) handleIncomingMessage(payload.payload);
       })
       .subscribe((status) => {
         console.log("Subscription status:", status);
@@ -136,21 +136,25 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     const senderId = String(newMsg.sender_id);
     const receiverId = String(newMsg.receiver_id);
     
-    // Always refresh inbox list
-    fetchInbox();
+    // Immediate inbox refresh for every message
+    setTimeout(() => fetchInbox(), 100);
 
     const currentActiveChat = activeChatRef.current;
     if (currentActiveChat) {
       const activeId = String(currentActiveChat.id);
-      // Check if this message belongs to the current chat
-      const isFromActiveChat = senderId === activeId && receiverId === myId;
-      const isToActiveChat = senderId === myId && receiverId === activeId;
+      // Check if this message belongs to the current open chat
+      const isFromActiveChat = (senderId === activeId && receiverId === myId);
+      const isToActiveChat = (senderId === myId && receiverId === activeId);
 
       if (isFromActiveChat || isToActiveChat) {
         setMessages(prev => {
+          // Robust duplicate checking
           if (prev.some(m => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
+          const newList = [...prev, newMsg];
+          // Ensure messages stay in time order
+          return newList.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
         });
+        
         if (isFromActiveChat) {
           markAsSeen(activeId);
         }
