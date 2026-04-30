@@ -28,6 +28,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const [isBlocked, setIsBlocked] = useState(false);
   const [hasBlockedMe, setHasBlockedMe] = useState(false);
   const [myBlockedIds, setMyBlockedIds] = useState<string[]>([]);
+  const [blockedMeIds, setBlockedMeIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeChatRef = useRef<User | null>(null);
 
@@ -44,13 +45,22 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const fetchInbox = async () => {
     try {
       setInboxError(null);
-      // Fetch blocked users first
-      const { data: blocks } = await supabase
+      
+      // Fetch users I have blocked
+      const { data: myBlocks } = await supabase
         .from('user_blocks')
         .select('blocked_id')
         .eq('blocker_id', currentUser.id);
       
-      if (blocks) setMyBlockedIds(blocks.map(b => String(b.blocked_id)));
+      if (myBlocks) setMyBlockedIds(myBlocks.map(b => String(b.blocked_id)));
+
+      // Fetch users who have blocked me
+      const { data: blocksOnMe } = await supabase
+        .from('user_blocks')
+        .select('blocker_id')
+        .eq('blocked_id', currentUser.id);
+      
+      if (blocksOnMe) setBlockedMeIds(blocksOnMe.map(b => String(b.blocker_id)));
 
       const { data: msgs, error } = await supabase
         .from('messages')
@@ -138,8 +148,21 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         setRealtimeStatus(status === 'SUBSCRIBED' ? 'online' : 'connecting');
       });
 
+    // Subscribe to block list changes
+    const blockChannel = supabase.channel(`blocks_realtime_${currentUser.id}`)
+      .on('postgres_changes' as any, { event: '*', table: 'user_blocks', schema: 'public' }, () => {
+        fetchInbox();
+        if (activeChatRef.current) {
+          // Re-trigger the block status check in the other useEffect
+          const chat = activeChatRef.current;
+          setActiveChat({ ...chat }); 
+        }
+      })
+      .subscribe();
+
     return () => { 
-      supabase.removeChannel(channel); 
+      supabase.removeChannel(channel);
+      supabase.removeChannel(blockChannel);
     };
   }, [currentUser.id]);
 
@@ -147,6 +170,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     const myId = String(currentUser.id);
     const senderId = String(newMsg.sender_id);
     const receiverId = String(newMsg.receiver_id);
+
+    // SILENTLY IGNORE messages from blocked users
+    // If I blocked them or they blocked me, ignore the message
+    if (myBlockedIds.includes(senderId) || blockedMeIds.includes(senderId)) {
+      console.log("Message blocked from:", senderId);
+      return;
+    }
     
     // Immediate inbox refresh for every message
     setTimeout(() => fetchInbox(), 100);
@@ -199,7 +229,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   }, [activeChat?.id]);
 
   useEffect(() => {
-    if (!activeChat) return;
+    if (!activeChat) {
+      setIsBlocked(false);
+      setHasBlockedMe(false);
+      return;
+    }
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
@@ -234,7 +268,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
     fetchMessages();
     checkBlockStatus();
-  }, [activeChat?.id, currentUser.id]);
+  }, [activeChat, currentUser.id]); // Reduced dependency to activeChat object itself for ref changes
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
@@ -382,6 +416,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                         <h4 className="font-bold text-gray-900 truncate text-sm">{user.username}</h4>
                         {myBlockedIds.includes(String(user.id)) && (
                           <span className="bg-red-50 text-red-600 text-[8px] px-1 rounded border border-red-100 uppercase font-black shrink-0">Blocked</span>
+                        )}
+                        {blockedMeIds.includes(String(user.id)) && (
+                          <span className="bg-gray-100 text-gray-600 text-[8px] px-1 rounded border border-gray-200 uppercase font-black shrink-0">Restricted</span>
                         )}
                       </div>
                       <span className="text-[10px] text-gray-400 font-medium">
