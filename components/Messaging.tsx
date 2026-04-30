@@ -157,6 +157,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       .on('broadcast', { event: 'new_message' }, (payload) => {
         if (payload.payload) handleIncomingMessage(payload.payload);
       })
+      .on('broadcast', { event: 'update_message' }, (payload) => {
+        if (payload.payload) {
+          const updatedMsg = payload.payload;
+          setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
+          fetchInbox();
+        }
+      })
       .on('broadcast', { event: 'block_update' }, () => {
         fetchInbox();
         if (activeChatRef.current) {
@@ -407,7 +414,20 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         return;
       }
 
+      // Optimistic update for sender's UI
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: '[REMOVED]' } : m));
+
       // Realtime subscription will handle the local state update automatically via 'UPDATE' event
+      // But we broadcast for instant UI feedback for the recipient
+      if (activeChat) {
+        const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
+        supabase.channel(receiverChannelName).send({
+          type: 'broadcast',
+          event: 'update_message',
+          payload: { id: msgId, content: '[REMOVED]', updated_at: new Date().toISOString() }
+        });
+      }
+
       fetchInbox();
     } catch (err) {
       console.error("Remove Message Error:", err);
