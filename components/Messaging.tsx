@@ -42,6 +42,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<any>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const touchTimerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -951,7 +952,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                                 src={m.content.replace('IMAGE_URL:', '')} 
                                 alt="Shared photo" 
                                 className="max-w-full rounded-lg border bg-gray-50 cursor-pointer hover:opacity-95 transition-opacity max-h-[300px] object-contain"
-                                onClick={() => window.open(m.content.replace('IMAGE_URL:', ''), '_blank')}
+                                onClick={() => setPreviewImageUrl(m.content.replace('IMAGE_URL:', ''))}
                                 referrerPolicy="no-referrer"
                               />
                             </div>
@@ -1128,6 +1129,48 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
           </div>
         )}
       </div>
+      {/* Image Preview Modal */}
+      {previewImageUrl && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center animate-in fade-in duration-300"
+          onClick={() => setPreviewImageUrl(null)}
+        >
+          {/* Top Bar */}
+          <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setPreviewImageUrl(null);
+              }}
+              className="text-white text-2xl w-10 h-10 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors"
+            >
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+            
+            <a 
+              href={previewImageUrl} 
+              download={`shared_image_${Date.now()}.png`}
+              onClick={(e) => e.stopPropagation()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white text-sm bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full flex items-center gap-2 transition-all"
+            >
+              <i className="fa-solid fa-download"></i>
+              Download
+            </a>
+          </div>
+
+          {/* Image Container */}
+          <div className="w-full h-full p-4 md:p-12 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <img 
+              src={previewImageUrl} 
+              alt="Preview" 
+              className="max-w-full max-h-full object-contain shadow-2xl rounded-sm"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
