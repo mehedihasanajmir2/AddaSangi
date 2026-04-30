@@ -43,6 +43,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<any>(null);
   const touchTimerRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const COMMON_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🔥', '🙏', '🎉'];
 
@@ -682,6 +683,43 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     }
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeChat) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert("Please select an image file.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      alert("Image is too large. Max 5MB.");
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const fileName = `img_${currentUser.id}_${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+      const { data, error } = await supabase.storage
+        .from('messages')
+        .upload(`images/${fileName}`, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('messages')
+        .getPublicUrl(`images/${fileName}`);
+
+      await sendSpecialMessage(`IMAGE_URL:${publicUrl}`);
+    } catch (err: any) {
+      console.error("Image Upload Error:", err.message);
+      alert("Failed to send image.");
+    } finally {
+      setIsSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const sendSpecialMessage = async (content: string) => {
     if (!activeChat || isBlocked || hasBlockedMe) return;
     
@@ -904,6 +942,16 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                               </div>
                               <audio controls src={m.content.replace('AUDIO_URL:', '')} className="h-8 max-w-[150px] md:max-w-[200px]" />
                             </div>
+                          ) : m.content.startsWith('IMAGE_URL:') ? (
+                            <div className="py-1">
+                              <img 
+                                src={m.content.replace('IMAGE_URL:', '')} 
+                                alt="Shared photo" 
+                                className="max-w-full rounded-lg border bg-gray-50 cursor-pointer hover:opacity-95 transition-opacity max-h-[300px] object-contain"
+                                onClick={() => window.open(m.content.replace('IMAGE_URL:', ''), '_blank')}
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
                           ) : m.content}
                         </p>
                         {!isRemoved && (
@@ -1015,7 +1063,19 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                         >
                           <i className="fa-regular fa-face-smile text-xl"></i>
                         </button>
-                        <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-solid fa-paperclip text-lg"></i></button>
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          className="hidden" 
+                          accept="image/*" 
+                          onChange={handleFileSelect} 
+                        />
+                        <button 
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"
+                        >
+                          <i className="fa-solid fa-camera text-lg"></i>
+                        </button>
                       </div>
                       <input 
                         type="text" 
