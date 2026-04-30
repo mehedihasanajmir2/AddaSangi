@@ -73,6 +73,12 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       
       if (blocksOnMe) setBlockedMeIds(blocksOnMe.map(b => String(b.blocker_id).toLowerCase()));
 
+      // Fetch conversation visibility settings (to hide deleted chats for current user)
+      const { data: visibilitySettings } = await supabase
+        .from('conversation_visibility')
+        .select('contact_id, hidden_until')
+        .eq('user_id', currentUser.id);
+
       const { data: msgs, error } = await supabase
         .from('messages')
         .select('*')
@@ -85,6 +91,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         const contactMap = new Map<string, any>();
         msgs.forEach((m: any) => {
           const otherId = String(m.sender_id) === String(currentUser.id) ? String(m.receiver_id) : String(m.sender_id);
+          
+          // Check if this chat is hidden for me
+          const vSetting = visibilitySettings?.find(v => String(v.contact_id) === otherId);
+          if (vSetting && new Date(m.created_at) <= new Date(vSetting.hidden_until)) {
+            return; // Skip messages before or at the hidden time
+          }
+
           if (!contactMap.has(otherId)) {
             contactMap.set(otherId, {
               lastMessage: m.content === '[REMOVED]' ? 'Sms removed' : m.content,
@@ -267,13 +280,26 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       return;
     }
     const fetchMessages = async () => {
+      // Get visibility setting for this specific contact
+      const { data: vSetting } = await supabase
+        .from('conversation_visibility')
+        .select('hidden_until')
+        .eq('user_id', currentUser.id)
+        .eq('contact_id', activeChat!.id)
+        .maybeSingle();
+
       const { data } = await supabase
         .from('messages')
         .select('*')
-        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat.id}),and(sender_id.eq.${activeChat.id},receiver_id.eq.${currentUser.id})`)
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat!.id}),and(sender_id.eq.${activeChat!.id},receiver_id.eq.${currentUser.id})`)
         .order('created_at', { ascending: true });
+      
       if (data) {
-        setMessages(data);
+        // Filter out messages that were hidden
+        const visibleMessages = vSetting 
+          ? data.filter(m => new Date(m.created_at) > new Date(vSetting.hidden_until))
+          : data;
+        setMessages(visibleMessages);
         markAsSeen();
       }
     };
@@ -377,22 +403,29 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   };
 
   const deleteChat = async () => {
-    if (!activeChat || !window.confirm('Are you sure you want to delete this conversation?')) return;
+    if (!activeChat || !window.confirm('Delete this conversation from your inbox? This will not remove it for the other person.')) return;
     try {
       const myId = currentUser.id;
       const otherId = activeChat.id;
       
-      // Separate deletes to avoid complex .or filter type casting issues
-      const p1 = supabase.from('messages').delete().eq('sender_id', myId).eq('receiver_id', otherId);
-      const p2 = supabase.from('messages').delete().eq('sender_id', otherId).eq('receiver_id', myId);
-      
-      await Promise.all([p1, p2]);
+      // Instead of deleting messages, we mark the conversation as hidden for US
+      // upside: upsert helps handle both initial delete and repeated deletes
+      const { error } = await supabase
+        .from('conversation_visibility')
+        .upsert({ 
+          user_id: myId, 
+          contact_id: otherId, 
+          hidden_until: new Date().toISOString() 
+        }, { onConflict: 'user_id,contact_id' });
+
+      if (error) throw error;
       
       setMessages([]);
       fetchInbox();
       setActiveChat(null);
-    } catch (err) {
-      console.error("Delete Chat Error:", err);
+    } catch (err: any) {
+      console.error("Delete Chat Error:", err.message);
+      alert("Failed to hide chat: " + err.message);
     }
   };
 
