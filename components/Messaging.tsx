@@ -591,8 +591,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     }, 600);
   };
 
-  const handleTouchEnd = () => {
-    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+    }
   };
 
   const startVoiceRecording = async () => {
