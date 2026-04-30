@@ -399,37 +399,39 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const deleteMessage = async (msgId: string) => {
     if (!window.confirm('Remove this message for everyone?')) return;
     try {
-      // Soft Delete: Update content to a special flag
+      // ১. Optimistic update (নিজের স্ক্রিনে সাথে সাথে রিমুভ দেখাবে)
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: '[REMOVED]' } : m));
+
+      // ২. Database update
       const { error } = await supabase
         .from('messages')
         .update({ content: '[REMOVED]' })
         .eq('id', msgId);
       
       if (error) {
+        // ভুল হলে ইনবক্স রিফ্রেশ করে আগের মেসেজ ফিরিয়ে আনা
+        fetchInbox(); 
         if (error.code === '42501') {
           alert("Permission denied. You can only remove your own messages.");
         } else {
-          alert("Failed to remove: " + error.message);
+          alert("Failed to remove from database: " + error.message);
         }
         return;
       }
 
-      // Optimistic update for sender's UI
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: '[REMOVED]' } : m));
-
-      // Broadcast for instant UI feedback for the recipient using THEIR channel
+      // ৩. Broadcast to recipient (রিসিভ্যার যাতে সাথে সাথে দেখতে পায়)
       if (activeChat) {
         const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
-        // We create a temporary channel reference to send the broadcast to the recipient
-        const tempChannel = supabase.channel(`temp_broadcast_${Date.now()}`);
-        tempChannel.subscribe((status) => {
+        // রিসিপিয়েন্টের চ্যানেলে সরাসরি ব্রডকাস্ট পাঠানো
+        const bc = supabase.channel(receiverChannelName);
+        bc.subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            tempChannel.send({
+            bc.send({
               type: 'broadcast',
               event: 'update_message',
               payload: { id: msgId, content: '[REMOVED]' }
-            }).finally(() => {
-              supabase.removeChannel(tempChannel);
+            }).then(() => {
+              supabase.removeChannel(bc);
             });
           }
         });
@@ -438,6 +440,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       fetchInbox();
     } catch (err) {
       console.error("Remove Message Error:", err);
+      fetchInbox();
     }
   };
 
