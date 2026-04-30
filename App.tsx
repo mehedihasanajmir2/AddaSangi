@@ -51,19 +51,32 @@ const App: React.FC = () => {
   const fetchProfile = useCallback(async (userAuth: any) => {
     if (!userAuth) return;
     try {
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
+      // Set a temporary user profile quickly to avoid white screen while waiting for DB
+      const fallbackUser: User = {
+        id: userAuth.id,
+        username: userAuth.user_metadata?.full_name || userAuth.email?.split('@')[0] || 'User',
+        avatar: userAuth.user_metadata?.avatar_url || `https://picsum.photos/seed/${userAuth.id}/200`,
+        email: userAuth.email,
+        location: 'Bangladesh'
+      };
+      setCurrentUser(fallbackUser);
+
+      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
+      
       if (profile) {
         setCurrentUser({
           id: profile.id,
-          username: profile.full_name || userAuth.user_metadata?.full_name || 'AddaSangi User',
-          avatar: profile.avatar_url || `https://picsum.photos/seed/${profile.id}/200`,
+          username: profile.full_name || fallbackUser.username,
+          avatar: profile.avatar_url || fallbackUser.avatar,
           coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
           bio: profile.bio,
           email: profile.email || userAuth.email,
-          location: profile.location
+          location: profile.location || 'Bangladesh'
         });
       }
-    } catch (err) { console.error("Profile Fetch Error:", err); }
+    } catch (err) { 
+      console.error("Profile Fetch Error:", err);
+    }
   }, []);
 
   useEffect(() => {
@@ -210,6 +223,20 @@ const App: React.FC = () => {
     setIsIncoming(false);
   };
 
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setSession(null);
+      setCurrentUser(null);
+    } catch (err) {
+      console.error("Logout Error:", err);
+      // Fallback: forcefully clear local session if possible
+      setSession(null);
+      setCurrentUser(null);
+    }
+  };
+
   if (loadingSession) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -220,16 +247,24 @@ const App: React.FC = () => {
   }
 
   if (!session) return <Login onLogin={() => {}} />;
-  if (!currentUser) return null;
+  
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <img src={LOGO_URL} className="w-20 h-20 animate-bounce mb-4" alt="" />
+        <p className="text-[#1b5e20] font-black animate-pulse text-lg">প্রোফাইল লোড হচ্ছে...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen bg-[#e8f5e9] flex flex-col font-sans overflow-hidden">
-      {/* WhatsApp Style Header (Mobile Only) */}
-      <header className="md:hidden h-16 bg-[#b71c1c] text-white flex items-center justify-between px-4 shadow-lg z-50 shrink-0">
+      {/* WhatsApp Style Header (Global) */}
+      <header className="h-16 bg-[#b71c1c] text-white flex items-center justify-between px-4 shadow-lg z-50 shrink-0">
         <h1 className="text-xl font-bold tracking-tight">AddaSangi</h1>
         <div className="flex items-center gap-5">
           <button onClick={() => setActiveTab(AppTab.SEARCH)} className="text-xl text-white/70 hover:text-white"><i className="fa-solid fa-magnifying-glass"></i></button>
-          <button onClick={() => setActiveTab(AppTab.MENU)} className="text-xl text-white/70 hover:text-white"><i className="fa-solid fa-ellipsis-vertical"></i></button>
+          <button onClick={() => setActiveTab(AppTab.MENU)} className="text-xl text-white/70 hover:text-white md:hidden"><i className="fa-solid fa-ellipsis-vertical"></i></button>
         </div>
       </header>
 
@@ -250,6 +285,13 @@ const App: React.FC = () => {
       </nav>
 
       <div className="flex-1 flex overflow-hidden relative">
+        <Sidebar 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab} 
+          user={currentUser} 
+          onProfileClick={() => setActiveTab(AppTab.PROFILE)}
+          unreadMessagesCount={unreadMessagesCount}
+        />
         {/* Main Content Area - Full Screen for WhatsApp feel */}
         <main className="flex-1 h-full overflow-hidden bg-white">
           {activeTab === AppTab.SEARCH && (
@@ -285,7 +327,7 @@ const App: React.FC = () => {
           )}
           {activeTab === AppTab.MENU && (
             <div className="h-full bg-[#e8f5e9] overflow-y-auto p-4">
-              <Menu user={currentUser} onLogout={() => supabase.auth.signOut()} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
+              <Menu user={currentUser} onLogout={handleLogout} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
             </div>
           )}
         </main>

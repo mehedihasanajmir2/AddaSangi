@@ -23,10 +23,18 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const [inboxUsers, setInboxUsers] = useState<MessagePreview[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'online' | 'error'>('connecting');
+  const [inboxError, setInboxError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (targetUser) {
+      setActiveChat(targetUser);
+    }
+  }, [targetUser]);
 
   const fetchInbox = async () => {
     try {
+      setInboxError(null);
       const { data: msgs, error } = await supabase
         .from('messages')
         .select('*')
@@ -67,45 +75,69 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
             }).sort((a, b) => new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime());
             setInboxUsers(formattedInbox);
           }
+        } else {
+          setInboxUsers([]);
         }
       }
-    } catch (err: any) { console.error("Inbox Fetch Error:", err.message); }
+    } catch (err: any) { 
+      console.error("Inbox Fetch Error:", err.message);
+      setInboxError(err.message);
+    }
   };
 
   useEffect(() => {
     fetchInbox();
-    const channel = supabase.channel('global_chat_channel')
-      .on('postgres_changes' as any, { event: 'INSERT', table: 'messages' }, (payload: any) => {
-          const newMsg = payload.new;
-          const myId = String(currentUser.id);
-          const senderId = String(newMsg.sender_id);
-          const receiverId = String(newMsg.receiver_id);
-          if (senderId === myId || receiverId === myId) {
+    const channelName = `messages_realtime_${currentUser.id}_${Date.now()}`;
+    const channel = supabase.channel(channelName)
+      .on('postgres_changes' as any, { 
+        event: '*', 
+        table: 'messages',
+        schema: 'public'
+      }, async (payload: any) => {
+        const msg = payload.new || payload.old;
+        if (!msg) return;
+
+        const myId = String(currentUser.id);
+        const senderId = String(msg.sender_id);
+        const receiverId = String(msg.receiver_id);
+
+        if (senderId === myId || receiverId === myId) {
+          if (payload.eventType === 'INSERT') {
+            await handleIncomingMessage(msg);
+          } else if (payload.eventType === 'UPDATE') {
+            setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
             fetchInbox();
-            if (activeChat) {
-              const activeId = String(activeChat.id);
-              if (senderId === activeId || receiverId === activeId) {
-                setMessages(prev => prev.find(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
-                // If I am the receiver and this chat is active, mark as seen
-                if (receiverId === myId && senderId === activeId) {
-                  markAsSeen();
-                }
-              }
-            }
           }
         }
-      )
-      .on('postgres_changes' as any, { event: 'UPDATE', table: 'messages' }, (payload: any) => {
-        const updatedMsg = payload.new;
-        setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
-        fetchInbox();
       })
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setRealtimeStatus('online');
-        else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') setRealtimeStatus('error');
+        setRealtimeStatus(status === 'SUBSCRIBED' ? 'online' : 'connecting');
       });
+
     return () => { supabase.removeChannel(channel); };
-  }, [currentUser.id, activeChat?.id]);
+  }, [currentUser.id]);
+
+  const handleIncomingMessage = async (newMsg: any) => {
+    const myId = String(currentUser.id);
+    const senderId = String(newMsg.sender_id);
+    const receiverId = String(newMsg.receiver_id);
+    
+    if (senderId === myId || receiverId === myId) {
+      await fetchInbox();
+      if (activeChat) {
+        const activeId = String(activeChat.id);
+        if (senderId === activeId || receiverId === activeId) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          if (receiverId === myId && senderId === activeId) {
+            markAsSeen();
+          }
+        }
+      }
+    }
+  };
 
   const markAsSeen = async () => {
     if (!activeChat) return;
@@ -148,28 +180,51 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
   const sendMessage = async () => {
     if (!msgInput.trim() || !activeChat || isSending) return;
+    
     const content = msgInput;
+    const receiverId = activeChat.id;
+    const senderId = currentUser.id;
+    
     setMsgInput('');
     setIsSending(true);
+    
+    const tempId = 'temp-' + Date.now();
     const tempMsg = { 
-      id: 'temp-' + Date.now(), 
-      sender_id: currentUser.id, 
-      receiver_id: activeChat.id, 
+      id: tempId, 
+      sender_id: senderId, 
+      receiver_id: receiverId, 
       content: content, 
       created_at: new Date().toISOString(), 
       is_sending: true,
       is_seen: false 
     };
+    
     setMessages(prev => [...prev, tempMsg]);
-    const { error, data } = await supabase.from('messages').insert({ 
-      sender_id: currentUser.id, 
-      receiver_id: activeChat.id, 
-      content: content,
-      is_seen: false 
-    }).select();
-    setIsSending(false);
-    if (error) setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
-    else if (data) setMessages(prev => prev.map(m => m.id === tempMsg.id ? data[0] : m));
+    
+    try {
+      const { error, data } = await supabase.from('messages').insert({ 
+        sender_id: senderId, 
+        receiver_id: receiverId, 
+        content: content
+      }).select();
+      
+      if (error) throw error;
+      
+      if (data) {
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...data[0], is_sending: false } : m));
+        fetchInbox();
+      }
+    } catch (err: any) {
+      console.error("Message Send Failed:", err);
+      // Give feedback in the temp message instead of just deleting it
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, is_sending: false, error: true } : m));
+      // Optionally remove after a delay
+      setTimeout(() => {
+        setMessages(prev => prev.filter(m => m.id !== tempId || m.error));
+      }, 3000);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -269,9 +324,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                           {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {isMe && (
-                          m.is_seen === true ? 
-                          <span className="text-[9px] text-blue-500 font-bold ml-1">Seen</span> :
-                          <i className="fa-solid fa-check text-[10px] text-gray-400 ml-1"></i>
+                          m.error ? (
+                            <i className="fa-solid fa-circle-exclamation text-red-500 ml-1 text-[10px]" title="Failed to send"></i>
+                          ) : m.is_seen === true ? (
+                            <span className="text-[9px] text-blue-500 font-bold ml-1">Seen</span>
+                          ) : (
+                            <i className="fa-solid fa-check text-[10px] text-gray-400 ml-1"></i>
+                          )
                         )}
                       </div>
                     </div>

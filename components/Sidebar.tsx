@@ -28,7 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, user, onProfi
   };
 
   return (
-    <aside className="hidden md:flex flex-col w-[280px] p-4 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto bg-[#e8f5e9]">
+    <aside className="hidden md:flex flex-col w-[280px] p-4 h-full overflow-y-auto bg-[#e8f5e9] border-r border-gray-200">
       {/* Profile Header Shortcut */}
       <button 
         onClick={onProfileClick}
