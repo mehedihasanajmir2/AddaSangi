@@ -390,34 +390,27 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   };
 
   const deleteMessage = async (msgId: string) => {
-    if (!window.confirm('Delete this message for everyone?')) return;
+    if (!window.confirm('Remove this message for everyone?')) return;
     try {
-      // Optimistic Update
-      setMessages(prev => prev.filter(m => m.id !== msgId));
-
-      const { error, status } = await supabase
+      // Soft Delete: Update content to a special flag
+      const { error } = await supabase
         .from('messages')
-        .delete()
+        .update({ content: '[REMOVED]', updated_at: new Date().toISOString() })
         .eq('id', msgId);
       
       if (error) {
-        // Revert if error
-        fetchInbox(); // Refresh from DB to bring it back in UI
         if (error.code === '42501') {
-          alert("You don't have permission to delete this message in the database. Please run the SQL code provided.");
+          alert("Permission denied. You can only remove your own messages.");
         } else {
-          alert("Delete failed: " + error.message);
+          alert("Failed to remove: " + error.message);
         }
         return;
       }
 
-      if (status === 204 || status === 200) {
-        console.log("Message permanently deleted from database");
-        fetchInbox();
-      }
-    } catch (err) {
-      console.error("Delete Message Error:", err);
+      // Realtime subscription will handle the local state update automatically via 'UPDATE' event
       fetchInbox();
+    } catch (err) {
+      console.error("Remove Message Error:", err);
     }
   };
 
@@ -568,19 +561,30 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                 const prevMsg = idx > 0 ? messages[idx-1] : null;
                 const isSameSender = prevMsg && String(prevMsg.sender_id) === String(m.sender_id);
                 
+                const isRemoved = m.content === '[REMOVED]';
+                
                 return (
                   <div key={m.id} className={`group flex ${isMe ? 'justify-end' : 'justify-start'} ${!isSameSender ? 'mt-2' : 'mt-0.5'}`}>
-                    <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'}`}>
+                    <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isRemoved ? 'bg-gray-100 text-gray-400 border border-gray-200 italic' : isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'}`}>
                       {!isMe && !isSameSender && <span className="block text-[10px] font-bold text-red-600 mb-0.5">{activeChat.username}</span>}
                       <div className="flex justify-between items-start gap-2">
-                        <p className="leading-relaxed flex-1">{m.content}</p>
-                        <button 
-                          onClick={() => deleteMessage(m.id)}
-                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-[10px] ml-1 pt-1 shrink-0"
-                          title="Delete message"
-                        >
-                          <i className="fa-solid fa-trash-can"></i>
-                        </button>
+                        <p className="leading-relaxed flex-1">
+                          {isRemoved ? (
+                            <span className="flex items-center gap-1 text-[11px]">
+                              <i className="fa-solid fa-ban text-[9px]"></i>
+                              Sms removed
+                            </span>
+                          ) : m.content}
+                        </p>
+                        {isMe && !isRemoved && (
+                          <button 
+                            onClick={() => deleteMessage(m.id)}
+                            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all text-[10px] ml-1 pt-1 shrink-0"
+                            title="Remove message"
+                          >
+                            <i className="fa-solid fa-trash-can"></i>
+                          </button>
+                        )}
                       </div>
                       <div className="flex items-center justify-end gap-1 mt-1">
                         <span className="text-[9px] text-gray-400 font-medium">
