@@ -680,7 +680,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                               e.stopPropagation();
                               deleteMessage(m.id);
                             }}
-                            className={`${longPressedId === m.id ? 'opacity-100 scale-125' : 'opacity-0'} group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-[12px] ml-1 pt-1 shrink-0 bg-white/50 rounded-full w-6 h-6 flex items-center justify-center`}
+                            className={`${longPressedId === m.id ? 'opacity-100 scale-125' : 'opacity-0'} md:group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-[12px] ml-1 pt-1 shrink-0 bg-white/50 rounded-full w-6 h-6 flex items-center justify-center`}
                             title="Remove message"
                           >
                             <i className="fa-solid fa-trash-can"></i>
