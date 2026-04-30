@@ -62,7 +62,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .select('blocked_id')
         .eq('blocker_id', currentUser.id);
       
-      if (myBlocks) setMyBlockedIds(myBlocks.map(b => String(b.blocked_id)));
+      if (myBlocks) setMyBlockedIds(myBlocks.map(b => String(b.blocked_id).toLowerCase()));
 
       // Fetch users who have blocked me
       const { data: blocksOnMe } = await supabase
@@ -70,7 +70,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .select('blocker_id')
         .eq('blocked_id', currentUser.id);
       
-      if (blocksOnMe) setBlockedMeIds(blocksOnMe.map(b => String(b.blocker_id)));
+      if (blocksOnMe) setBlockedMeIds(blocksOnMe.map(b => String(b.blocker_id).toLowerCase()));
 
       const { data: msgs, error } = await supabase
         .from('messages')
@@ -153,6 +153,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       .on('broadcast', { event: 'new_message' }, (payload) => {
         if (payload.payload) handleIncomingMessage(payload.payload);
       })
+      .on('broadcast', { event: 'delete_message' }, (payload) => {
+        if (payload.payload?.message_id) {
+          setMessages(prev => prev.filter(m => m.id !== payload.payload.message_id));
+        }
+      })
       .on('broadcast', { event: 'block_update' }, () => {
         fetchInbox();
         if (activeChatRef.current) {
@@ -188,15 +193,20 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   }, [currentUser.id]);
 
   const handleIncomingMessage = (newMsg: any) => {
-    const myId = String(currentUser.id);
-    const senderId = String(newMsg.sender_id);
-    const receiverId = String(newMsg.receiver_id);
+    const myId = String(currentUser.id).toLowerCase();
+    const senderId = String(newMsg.sender_id).toLowerCase();
+    const receiverId = String(newMsg.receiver_id).toLowerCase();
 
     // SILENTLY IGNORE messages from blocked users using the latest REF values
-    if (myBlockedIdsRef.current.includes(senderId) || blockedMeIdsRef.current.includes(senderId)) {
-      console.log("Message blocked from:", senderId);
+    const isBlockedByMe = myBlockedIdsRef.current.some(id => id.trim().toLowerCase() === senderId.trim().toLowerCase());
+    const hasBlockedMe = blockedMeIdsRef.current.some(id => id.trim().toLowerCase() === senderId.trim().toLowerCase());
+
+    if (isBlockedByMe || hasBlockedMe) {
+      console.log(`[BLOCK-FILTER] REJECTED from ${senderId}. MeBlockedThem: ${isBlockedByMe}, TheyBlockedMe: ${hasBlockedMe}`);
       return;
     }
+    
+    console.log(`[BLOCK-FILTER] Message ALLOWED from ${senderId}`);
     
     // Immediate inbox refresh for every message
     setTimeout(() => fetchInbox(), 100);
@@ -322,7 +332,14 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         content: content
       }).select();
       
-      if (error) throw error;
+      if (error) {
+        // Handle RLS block error or code 42501 (Insufficient Permissions)
+        if (error.message.toLowerCase().includes('violates row-level security policy') || error.code === '42501') {
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, is_sending: false, error: true, block_fail: true } : m));
+          return;
+        }
+        throw error;
+      }
       
       if (data) {
         const sentMsg = data[0];
@@ -370,6 +387,33 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       setActiveChat(null);
     } catch (err) {
       console.error("Delete Chat Error:", err);
+    }
+  };
+
+  const deleteMessage = async (msgId: string) => {
+    if (!window.confirm('Delete this message?')) return;
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', msgId);
+      
+      if (error) throw error;
+      
+      // Notify other user via broadcast
+      if (activeChat) {
+        const receiverChannelName = `realtime_messages_main_${activeChat.id}`;
+        supabase.channel(receiverChannelName).send({
+          type: 'broadcast',
+          event: 'delete_message',
+          payload: { message_id: msgId }
+        });
+      }
+
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      fetchInbox();
+    } catch (err) {
+      console.error("Delete Message Error:", err);
     }
   };
 
@@ -444,10 +488,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                     <div className="flex justify-between items-baseline">
                       <div className="flex items-center gap-1 min-w-0">
                         <h4 className="font-bold text-gray-900 truncate text-sm">{user.username}</h4>
-                        {myBlockedIds.includes(String(user.id)) && (
+                        {myBlockedIds.includes(String(user.id).toLowerCase()) && (
                           <span className="bg-red-50 text-red-600 text-[8px] px-1 rounded border border-red-100 uppercase font-black shrink-0">Blocked</span>
                         )}
-                        {blockedMeIds.includes(String(user.id)) && (
+                        {blockedMeIds.includes(String(user.id).toLowerCase()) && (
                           <span className="bg-gray-100 text-gray-600 text-[8px] px-1 rounded border border-gray-200 uppercase font-black shrink-0">Restricted</span>
                         )}
                       </div>
@@ -521,17 +565,29 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                 const isSameSender = prevMsg && String(prevMsg.sender_id) === String(m.sender_id);
                 
                 return (
-                  <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${!isSameSender ? 'mt-2' : 'mt-0.5'}`}>
+                  <div key={m.id} className={`group flex ${isMe ? 'justify-end' : 'justify-start'} ${!isSameSender ? 'mt-2' : 'mt-0.5'}`}>
                     <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'}`}>
                       {!isMe && !isSameSender && <span className="block text-[10px] font-bold text-red-600 mb-0.5">{activeChat.username}</span>}
-                      <p className="leading-relaxed">{m.content}</p>
+                      <div className="flex justify-between items-start gap-2">
+                        <p className="leading-relaxed flex-1">{m.content}</p>
+                        <button 
+                          onClick={() => deleteMessage(m.id)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-[10px] ml-1 pt-1 shrink-0"
+                          title="Delete message"
+                        >
+                          <i className="fa-solid fa-trash-can"></i>
+                        </button>
+                      </div>
                       <div className="flex items-center justify-end gap-1 mt-1">
                         <span className="text-[9px] text-gray-400 font-medium">
                           {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {isMe && (
                           m.error ? (
-                            <i className="fa-solid fa-circle-exclamation text-red-500 ml-1 text-[10px]" title="Failed to send"></i>
+                            <div className="flex flex-col items-end">
+                              <i className="fa-solid fa-circle-exclamation text-red-500 ml-1 text-[10px]" title="Failed to send"></i>
+                              {m.block_fail && <span className="text-[8px] text-red-600 font-bold uppercase">Blocked</span>}
+                            </div>
                           ) : m.is_seen === true ? (
                             <span className="text-[9px] text-blue-500 font-bold ml-1">Seen</span>
                           ) : (
