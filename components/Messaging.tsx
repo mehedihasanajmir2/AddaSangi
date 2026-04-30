@@ -37,6 +37,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const [longPressedId, setLongPressedId] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showReactionId, setShowReactionId] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<any>(null);
   const touchTimerRef = useRef<any>(null);
 
   const COMMON_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🔥', '🙏', '🎉'];
@@ -590,6 +595,143 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
   };
 
+  const startVoiceRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioBlob.size > 1000) { // Only upload if more than ~1sec
+          await uploadVoiceMessage(audioBlob);
+        }
+        setRecordingDuration(0);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Mic Error:", err);
+      alert("Microphone access denied or not available.");
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    }
+  };
+
+  const cancelVoiceRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.onstop = () => {
+        setRecordingDuration(0);
+        const stream = mediaRecorderRef.current?.stream;
+        stream?.getTracks().forEach(track => track.stop());
+      };
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    }
+  };
+
+  const uploadVoiceMessage = async (blob: Blob) => {
+    if (!activeChat) return;
+    setIsSending(true);
+    try {
+      const fileName = `voice_${currentUser.id}_${Date.now()}.webm`;
+      const { data, error } = await supabase.storage
+        .from('messages')
+        .upload(`voice/${fileName}`, blob);
+
+      if (error) {
+        if (error.message.includes('bucket not found')) {
+          alert("Audio upload failed: 'messages' bucket doesn't exist in Supabase storage.");
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('messages')
+        .getPublicUrl(`voice/${fileName}`);
+
+      // Send as a special message
+      await sendSpecialMessage(`AUDIO_URL:${publicUrl}`);
+    } catch (err: any) {
+      console.error("Voice Upload Error:", err.message);
+      alert("Failed to send voice message.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const sendSpecialMessage = async (content: string) => {
+    if (!activeChat || isBlocked || hasBlockedMe) return;
+    
+    const receiverId = activeChat.id;
+    const senderId = currentUser.id;
+    
+    const tempId = 'temp-' + Date.now();
+    const tempMsg = { 
+      id: tempId, 
+      sender_id: senderId, 
+      receiver_id: receiverId, 
+      content: content, 
+      created_at: new Date().toISOString(), 
+      is_sending: true,
+      is_seen: false 
+    };
+    
+    setMessages(prev => [...prev, tempMsg]);
+    
+    try {
+      const { error, data } = await supabase.from('messages').insert({ 
+        sender_id: senderId, 
+        receiver_id: receiverId, 
+        content: content
+      }).select();
+      
+      if (error) throw error;
+      
+      if (data) {
+        const sentMsg = data[0];
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...sentMsg, is_sending: false } : m));
+        fetchInbox();
+        
+        const receiverChannelName = `realtime_messages_main_${receiverId}`;
+        const bc = supabase.channel(`broadcast_${Date.now()}`);
+        bc.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            supabase.channel(receiverChannelName).send({
+              type: 'broadcast',
+              event: 'new_message',
+              payload: sentMsg
+            }).finally(() => {
+              supabase.removeChannel(bc);
+            });
+          }
+        });
+      }
+    } catch (err) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = () => {
       setLongPressedId(null);
@@ -753,6 +895,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                               <i className="fa-solid fa-ban text-[9px]"></i>
                               Sms removed
                             </span>
+                          ) : m.content.startsWith('AUDIO_URL:') ? (
+                            <div className="flex items-center gap-2 py-1">
+                              <div className="w-8 h-8 rounded-full bg-[#1b5e20]/10 flex items-center justify-center text-[#1b5e20] shrink-0">
+                                <i className="fa-solid fa-microphone text-xs"></i>
+                              </div>
+                              <audio controls src={m.content.replace('AUDIO_URL:', '')} className="h-8 max-w-[150px] md:max-w-[200px]" />
+                            </div>
                           ) : m.content}
                         </p>
                         {!isRemoved && (
@@ -831,42 +980,68 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                 </div>
               ) : (
                 <div className="flex items-center gap-2 relative">
-                  {showEmojiPicker && (
-                    <div className="absolute bottom-full left-0 mb-2 p-2 bg-white rounded-xl shadow-2xl border flex flex-wrap gap-2 w-64 z-50 animate-in slide-in-from-bottom-2">
-                       {['❤️', '👍', '😂', '😮', '😢', '🔥', '🙏', '🎉', '💩', '💯', '✨', '🚀', '😍', '🤔', '👋', '✅', '❌', '🎁', '🎂', '🎈'].map(emoji => (
-                         <button 
-                            key={emoji} 
-                            onClick={(e) => { e.stopPropagation(); setMsgInput(prev => prev + emoji); setShowEmojiPicker(false); }}
-                            className="text-2xl hover:scale-125 transition-transform p-1"
-                          >
-                            {emoji}
-                          </button>
-                       ))}
+                  {isRecording ? (
+                    <div className="flex-1 flex items-center justify-between bg-white rounded-full h-11 px-4 text-red-600 shadow-inner">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
+                        <span className="text-sm font-bold truncate">Recording {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={cancelVoiceRecording} className="text-gray-400 hover:text-red-500 w-8 h-8 flex items-center justify-center"><i className="fa-solid fa-trash-can"></i></button>
+                        <button onClick={stopVoiceRecording} className="bg-red-600 text-white w-9 h-9 rounded-full flex items-center justify-center shadow-md animate-pulse"><i className="fa-solid fa-paper-plane"></i></button>
+                      </div>
                     </div>
+                  ) : (
+                    <>
+                      {showEmojiPicker && (
+                        <div className="absolute bottom-full left-0 mb-2 p-2 bg-white rounded-xl shadow-2xl border flex flex-wrap gap-2 w-64 z-50 animate-in slide-in-from-bottom-2">
+                          {['❤️', '👍', '😂', '😮', '😢', '🔥', '🙏', '🎉', '💩', '💯', '✨', '🚀', '😍', '🤔', '👋', '✅', '❌', '🎁', '🎂', '🎈'].map(emoji => (
+                             <button 
+                                key={emoji} 
+                                onClick={(e) => { e.stopPropagation(); setMsgInput(prev => prev + emoji); setShowEmojiPicker(false); }}
+                                className="text-2xl hover:scale-125 transition-transform p-1"
+                              >
+                                {emoji}
+                              </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
+                          className={`w-10 h-10 flex items-center justify-center transition-colors ${showEmojiPicker ? 'text-yellow-400' : 'text-white/70 hover:text-white'}`}
+                        >
+                          <i className="fa-regular fa-face-smile text-xl"></i>
+                        </button>
+                        <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-solid fa-paperclip text-lg"></i></button>
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="Type a message" 
+                        className="flex-1 bg-white rounded-lg px-4 py-2.5 outline-none text-sm shadow-sm text-green-900 placeholder:text-green-800/50" 
+                        value={msgInput} 
+                        onChange={(e) => setMsgInput(e.target.value)} 
+                        onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
+                      />
+                      {msgInput.trim() ? (
+                        <button 
+                          onClick={sendMessage} 
+                          disabled={isSending}
+                          className="w-12 h-12 bg-[#b71c1c] text-white rounded-full flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all shrink-0"
+                        >
+                          <i className="fa-solid fa-paper-plane text-lg"></i>
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={startVoiceRecording} 
+                          disabled={isSending || isBlocked || hasBlockedMe}
+                          className="w-12 h-12 bg-[#b71c1c] text-white rounded-full flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all shrink-0"
+                        >
+                          <i className="fa-solid fa-microphone text-lg"></i>
+                        </button>
+                      )}
+                    </>
                   )}
-                  <div className="flex items-center gap-1">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
-                      className={`w-10 h-10 flex items-center justify-center transition-colors ${showEmojiPicker ? 'text-yellow-400' : 'text-white/70 hover:text-white'}`}
-                    >
-                      <i className="fa-regular fa-face-smile text-xl"></i>
-                    </button>
-                    <button className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"><i className="fa-solid fa-paperclip text-lg"></i></button>
-                  </div>
-                  <input 
-                    type="text" 
-                    placeholder="Type a message" 
-                    className="flex-1 bg-white rounded-lg px-4 py-2.5 outline-none text-sm shadow-sm text-green-900 placeholder:text-green-800/50" 
-                    value={msgInput} 
-                    onChange={(e) => setMsgInput(e.target.value)} 
-                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
-                  />
-                  <button 
-                    onClick={sendMessage} 
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${msgInput.trim() ? 'bg-[#b71c1c] text-white shadow-md' : 'text-white/50'}`}
-                  >
-                    <i className={`fa-solid ${msgInput.trim() ? 'fa-paper-plane' : 'fa-microphone'} text-lg`}></i>
-                  </button>
                 </div>
               )}
             </div>
