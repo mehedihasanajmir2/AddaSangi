@@ -34,6 +34,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   const blockedMeIdsRef = useRef<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeChatRef = useRef<User | null>(null);
+  const [longPressedId, setLongPressedId] = useState<string | null>(null);
+  const touchTimerRef = useRef<any>(null);
 
   useEffect(() => {
     myBlockedIdsRef.current = myBlockedIds;
@@ -430,6 +432,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   };
 
   const deleteMessage = async (msgId: string) => {
+    setLongPressedId(null);
     if (!window.confirm('Remove this message for everyone?')) return;
     try {
       // ১. Optimistic update (নিজের স্ক্রিনে সাথে সাথে রিমুভ দেখাবে)
@@ -509,6 +512,29 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       console.error("Block/Unblock Error:", err);
     }
   };
+
+  const handleTouchStart = (id: string, isMe: boolean, isRemoved: boolean) => {
+    if (!isMe || isRemoved) return;
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+    touchTimerRef.current = setTimeout(() => {
+      setLongPressedId(id);
+      if (navigator.vibrate) navigator.vibrate(50); // Haptic feedback
+    }, 600);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = () => setLongPressedId(null);
+    window.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
 
   return (
     <div className="flex h-full bg-white overflow-hidden">
@@ -627,8 +653,17 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                 const isRemoved = m.content === '[REMOVED]';
                 
                 return (
-                  <div key={m.id} className={`group flex ${isMe ? 'justify-end' : 'justify-start'} ${!isSameSender ? 'mt-2' : 'mt-0.5'}`}>
-                    <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isRemoved ? 'bg-gray-100 text-gray-400 border border-gray-200 italic' : isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'}`}>
+                  <div 
+                    key={m.id} 
+                    className={`group flex ${isMe ? 'justify-end' : 'justify-start'} ${!isSameSender ? 'mt-2' : 'mt-0.5'}`}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      handleTouchStart(m.id, isMe, isRemoved);
+                    }}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchMove={handleTouchEnd}
+                  >
+                    <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isRemoved ? 'bg-gray-100 text-gray-400 border border-gray-200 italic' : isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'} ${longPressedId === m.id ? 'ring-2 ring-red-400' : ''}`}>
                       {!isMe && !isSameSender && <span className="block text-[10px] font-bold text-red-600 mb-0.5">{activeChat.username}</span>}
                       <div className="flex justify-between items-start gap-2">
                         <p className="leading-relaxed flex-1">
@@ -641,8 +676,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                         </p>
                         {isMe && !isRemoved && (
                           <button 
-                            onClick={() => deleteMessage(m.id)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all text-[10px] ml-1 pt-1 shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteMessage(m.id);
+                            }}
+                            className={`${longPressedId === m.id ? 'opacity-100 scale-125' : 'opacity-0'} group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all text-[12px] ml-1 pt-1 shrink-0 bg-white/50 rounded-full w-6 h-6 flex items-center justify-center`}
                             title="Remove message"
                           >
                             <i className="fa-solid fa-trash-can"></i>
