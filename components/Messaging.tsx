@@ -602,7 +602,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       }
       setShowReactionId(id); // Everyone can react
       if (navigator.vibrate) navigator.vibrate(50); // Haptic feedback
-    }, 600);
+    }, 400);
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -952,7 +952,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                     <div className={`max-w-[85%] md:max-w-[70%] p-2 px-3 rounded-lg text-[13px] shadow-sm relative ${isRemoved ? 'bg-gray-100 text-gray-400 border border-gray-200 italic' : isMe ? 'bg-[#dcf8c6] text-gray-800 rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'} ${longPressedId === m.id ? 'ring-2 ring-red-400' : ''}`}>
                       {showReactionId === m.id && (
                         <div 
-                          className="absolute -top-10 left-0 bg-white shadow-xl border rounded-full px-2 py-1 flex gap-2 z-20 animate-in fade-in zoom-in duration-200 react-protected"
+                          className={`absolute bottom-full mb-2 ${isMe ? 'right-0' : 'left-0'} bg-white shadow-xl border rounded-full px-2 py-1 flex gap-2 z-20 animate-in fade-in zoom-in duration-200 react-protected`}
                           onMouseDown={(e) => e.stopPropagation()}
                           onTouchStart={(e) => e.stopPropagation()}
                         >
