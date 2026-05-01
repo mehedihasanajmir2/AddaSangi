@@ -107,13 +107,27 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
   const [isUploading, setIsUploading] = useState(false);
   const [selectedMusic, setSelectedMusic] = useState<{ title: string, url: string } | null>(null);
 
-  // Sample Bangladeshi Songs (Mock URLs for demo)
-  const BANGLA_SONGS = [
-    { title: "Noya Daman", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
-    { title: "Tumi Kar Posha Pakhi", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
-    { title: "Loke Bole Bole Re", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
-    { title: "Bondhu Amar", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3" }
-  ];
+  // Expanded Song List (Bangla, Hindi, English)
+  const MUSIC_LIBRARY = {
+    Bangla: [
+      { title: "Noya Daman", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
+      { title: "Bondhu Amar", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
+      { title: "Hridoy Kinarai", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
+      { title: "Loke Bole", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3" }
+    ],
+    Hindi: [
+      { title: "Animal BGM", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3" },
+      { title: "Kesariya", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3" },
+      { title: "Tum Hi Ho", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3" }
+    ],
+    English: [
+      { title: "Stay With Me", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3" },
+      { title: "Sunflower", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3" },
+      { title: "Blinding Lights", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3" }
+    ]
+  };
+
+  const [activeCategory, setActiveCategory] = useState<keyof typeof MUSIC_LIBRARY>('Bangla');
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -231,22 +245,35 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
           <div className="bg-white p-4 rounded-xl shadow-sm border">
             <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
               <i className="fa-solid fa-music text-red-500 text-lg"></i>
-              Add Music (Bangla Hits)
+              Add Music (Global Hits)
             </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {BANGLA_SONGS.map(song => (
+            
+            <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
+              {Object.keys(MUSIC_LIBRARY).map(cat => (
+                <button 
+                  key={cat}
+                  onClick={() => setActiveCategory(cat as any)}
+                  className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${activeCategory === cat ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+              {MUSIC_LIBRARY[activeCategory].map(song => (
                 <button 
                   key={song.title}
                   onClick={() => setSelectedMusic(selectedMusic?.title === song.title ? null : song)}
-                  className={`p-2 text-[10px] font-bold border rounded-lg transition-all ${selectedMusic?.title === song.title ? 'bg-red-600 text-white border-red-600' : 'bg-gray-50 text-gray-600'}`}
+                  className={`p-2 text-[10px] text-left font-bold border rounded-lg transition-all truncate ${selectedMusic?.title === song.title ? 'bg-red-600 text-white border-red-600' : 'bg-gray-50 text-gray-600'}`}
                 >
-                  {song.title}
+                  <i className="fa-solid fa-play mr-1 opacity-50"></i> {song.title}
                 </button>
               ))}
             </div>
             {selectedMusic && (
               <div className="mt-3 p-2 bg-red-50 rounded-lg flex items-center justify-between">
-                <span className="text-[10px] text-red-600 font-bold italic">Playing: {selectedMusic.title}</span>
+                <span className="text-[10px] text-red-600 font-bold italic">Selected: {selectedMusic.title}</span>
                 <i className="fa-solid fa-volume-high animate-pulse text-red-500"></i>
               </div>
             )}
@@ -263,6 +290,8 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
   const story = stories[currentIndex];
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
+  const [isMuted, setIsMuted] = useState(false);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (currentIndex < stories.length - 1) {
@@ -270,14 +299,18 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
       } else {
         onClose();
       }
-    }, 5000); // 5 seconds per story
+    }, 10000); // 10 seconds per story
 
     return () => clearTimeout(timer);
   }, [currentIndex, stories.length, onClose]);
 
   useEffect(() => {
     if (story.music_url && audioRef.current) {
-      audioRef.current.play();
+      audioRef.current.volume = 0.5;
+      audioRef.current.play().catch(err => {
+        console.warn("Autoplay blocked:", err);
+        setIsMuted(true);
+      });
     }
     return () => {
       if (audioRef.current) {
@@ -285,49 +318,72 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
         audioRef.current.currentTime = 0;
       }
     };
-  }, [story.music_url]);
+  }, [story.music_url, story.id]);
+
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (audioRef.current) {
+      audioRef.current.muted = !audioRef.current.muted;
+      setIsMuted(audioRef.current.muted);
+      if (!audioRef.current.muted) audioRef.current.play();
+    }
+  };
 
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className="fixed inset-0 z-[120] bg-black flex flex-col items-center justify-center"
+      className="fixed inset-0 z-[120] bg-black flex flex-col items-center justify-center p-2"
     >
       {/* Progress Bars */}
-      <div className="absolute top-4 left-4 right-4 flex gap-1 z-30">
+      <div className="absolute top-4 left-4 right-4 flex gap-1 z-40">
         {stories.map((_, i) => (
           <div key={i} className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
             <motion.div 
               initial={{ width: 0 }}
               animate={{ width: i === currentIndex ? "100%" : i < currentIndex ? "100%" : "0%" }}
-              transition={{ duration: i === currentIndex ? 5 : 0, ease: "linear" }}
-              className="h-full bg-white"
+              transition={{ duration: i === currentIndex ? 10 : 0, ease: "linear" }}
+              className="h-full bg-red-500"
             />
           </div>
         ))}
       </div>
 
       {/* Top Bar */}
-      <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-30">
+      <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-40">
         <div className="flex items-center gap-3">
-          <img src={story.user?.avatar} className="w-10 h-10 rounded-full border-2 border-white" />
+          <img src={story.user?.avatar} className="w-10 h-10 rounded-full border-2 border-white object-cover" />
           <div>
-            <p className="text-white font-bold text-sm">{story.user?.username}</p>
-            <p className="text-white/60 text-[10px]">{new Date(story.created_at).toLocaleTimeString()}</p>
+            <p className="text-white font-bold text-sm leading-none">{story.user?.username}</p>
+            <p className="text-white/60 text-[10px] mt-1">{new Date(story.created_at).toLocaleTimeString()}</p>
           </div>
         </div>
-        <button onClick={onClose} className="text-white/80 hover:text-white transition-colors">
-          <i className="fa-solid fa-xmark text-2xl"></i>
-        </button>
+        <div className="flex items-center gap-4">
+          {story.music_url && (
+            <button onClick={toggleMute} className="text-white w-10 h-10 flex items-center justify-center bg-black/20 rounded-full border border-white/10 backdrop-blur-sm">
+              <i className={`fa-solid ${isMuted ? 'fa-volume-xmark text-red-500' : 'fa-volume-high'}`}></i>
+            </button>
+          )}
+          <button onClick={onClose} className="text-white/80 hover:text-white transition-colors">
+            <i className="fa-solid fa-xmark text-2xl"></i>
+          </button>
+        </div>
       </div>
 
       {/* Music Indicator */}
       {story.music_url && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 scale-90">
           <i className="fa-solid fa-music text-red-500 animate-[spin_3s_linear_infinite]"></i>
-          <span className="text-white text-xs font-bold italic">{story.music_title}</span>
-          <audio ref={audioRef} src={story.music_url} loop className="hidden" />
+          <span className="text-white text-[10px] font-bold italic truncate max-w-[120px]">{story.music_title}</span>
+          <audio 
+            ref={audioRef} 
+            src={story.music_url} 
+            loop 
+            preload="auto"
+            crossOrigin="anonymous"
+            className="hidden" 
+          />
         </div>
       )}
 
