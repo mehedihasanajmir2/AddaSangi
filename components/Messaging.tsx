@@ -776,6 +776,25 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     }
   };
 
+  const downloadImage = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `shared_image_${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error("Download error:", err);
+      // Fallback to opening in new tab if fetch fails
+      window.open(url, '_blank');
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = () => {
       setLongPressedId(null);
@@ -947,7 +966,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                               <audio controls src={m.content.replace('AUDIO_URL:', '')} className="h-8 max-w-[150px] md:max-w-[200px]" />
                             </div>
                           ) : m.content.startsWith('IMAGE_URL:') ? (
-                            <div className="py-1">
+                            <div className="py-1 relative group/img">
                               <img 
                                 src={m.content.replace('IMAGE_URL:', '')} 
                                 alt="Shared photo" 
@@ -955,6 +974,16 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                                 onClick={() => setPreviewImageUrl(m.content.replace('IMAGE_URL:', ''))}
                                 referrerPolicy="no-referrer"
                               />
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  downloadImage(m.content.replace('IMAGE_URL:', ''));
+                                }}
+                                className="absolute top-2 right-2 bg-black/50 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-black/70"
+                                title="Download Image"
+                              >
+                                <i className="fa-solid fa-download text-xs"></i>
+                              </button>
                             </div>
                           ) : m.content}
                         </p>
@@ -1147,17 +1176,16 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
               <i className="fa-solid fa-xmark"></i>
             </button>
             
-            <a 
-              href={previewImageUrl} 
-              download={`shared_image_${Date.now()}.png`}
-              onClick={(e) => e.stopPropagation()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white text-sm bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full flex items-center gap-2 transition-all"
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (previewImageUrl) downloadImage(previewImageUrl);
+              }}
+              className="text-white text-sm bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full flex items-center gap-2 transition-all active:scale-95"
             >
               <i className="fa-solid fa-download"></i>
               Download
-            </a>
+            </button>
           </div>
 
           {/* Image Container */}
