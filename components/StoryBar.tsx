@@ -107,27 +107,53 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
   const [isUploading, setIsUploading] = useState(false);
   const [selectedMusic, setSelectedMusic] = useState<{ title: string, url: string } | null>(null);
 
-  // Expanded Song List (Bangla, Hindi, English)
+  // Expanded Song List (Bangla, Hindi, English, Arabic, K-Pop)
   const MUSIC_LIBRARY = {
     Bangla: [
       { title: "Noya Daman", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
       { title: "Bondhu Amar", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
       { title: "Hridoy Kinarai", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
-      { title: "Loke Bole", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3" }
+      { title: "Loke Bole", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3" },
+      { title: "Pran Sakhi Re", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3" },
+      { title: "Tumi Kar Posha", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3" }
     ],
     Hindi: [
-      { title: "Animal BGM", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3" },
-      { title: "Kesariya", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3" },
-      { title: "Tum Hi Ho", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3" }
+      { title: "Kesariya", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3" },
+      { title: "Tum Hi Ho", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3" },
+      { title: "Chaleya", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3" },
+      { title: "Heeriye", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3" },
+      { title: "Dil Jhoom", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" }
     ],
     English: [
-      { title: "Stay With Me", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3" },
-      { title: "Sunflower", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3" },
-      { title: "Blinding Lights", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3" }
+      { title: "Stay With Me", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
+      { title: "Sunflower", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
+      { title: "Blinding Lights", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3" },
+      { title: "Shape of You", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3" },
+      { title: "Perfect", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3" }
+    ],
+    Arabic: [
+      { title: "Ya Habibi", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3" },
+      { title: "C'est La Vie", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3" }
+    ],
+    KPop: [
+      { title: "Dynamite", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3" },
+      { title: "How You Like That", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3" }
     ]
   };
 
   const [activeCategory, setActiveCategory] = useState<keyof typeof MUSIC_LIBRARY>('Bangla');
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (selectedMusic && previewAudioRef.current) {
+      previewAudioRef.current.play().catch(console.warn);
+    }
+    return () => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+      }
+    };
+  }, [selectedMusic]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -275,6 +301,7 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
               <div className="mt-3 p-2 bg-red-50 rounded-lg flex items-center justify-between">
                 <span className="text-[10px] text-red-600 font-bold italic">Selected: {selectedMusic.title}</span>
                 <i className="fa-solid fa-volume-high animate-pulse text-red-500"></i>
+                <audio ref={previewAudioRef} src={selectedMusic.url} loop className="hidden" />
               </div>
             )}
           </div>
@@ -291,23 +318,28 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   const [isMuted, setIsMuted] = useState(false);
+  const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (currentIndex < stories.length - 1) {
         setCurrentIndex(prev => prev + 1);
+        setHasStartedPlaying(false);
       } else {
         onClose();
       }
-    }, 10000); // 10 seconds per story
+    }, 15000); // 15 seconds per story
 
     return () => clearTimeout(timer);
   }, [currentIndex, stories.length, onClose]);
 
   useEffect(() => {
     if (story.music_url && audioRef.current) {
-      audioRef.current.volume = 0.5;
-      audioRef.current.play().catch(err => {
+      audioRef.current.volume = 1.0;
+      audioRef.current.play().then(() => {
+        setHasStartedPlaying(true);
+        setIsMuted(false);
+      }).catch(err => {
         console.warn("Autoplay blocked:", err);
         setIsMuted(true);
       });
@@ -325,7 +357,18 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
     if (audioRef.current) {
       audioRef.current.muted = !audioRef.current.muted;
       setIsMuted(audioRef.current.muted);
-      if (!audioRef.current.muted) audioRef.current.play();
+      if (!audioRef.current.muted) {
+        audioRef.current.play().then(() => setHasStartedPlaying(true));
+      }
+    }
+  };
+
+  const handleInteraction = () => {
+    if (story.music_url && audioRef.current && !hasStartedPlaying) {
+      audioRef.current.play().then(() => {
+        setHasStartedPlaying(true);
+        setIsMuted(false);
+      });
     }
   };
 
@@ -335,6 +378,7 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       className="fixed inset-0 z-[120] bg-black flex flex-col items-center justify-center p-2"
+      onClick={handleInteraction}
     >
       {/* Progress Bars */}
       <div className="absolute top-4 left-4 right-4 flex gap-1 z-40">
@@ -343,7 +387,7 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
             <motion.div 
               initial={{ width: 0 }}
               animate={{ width: i === currentIndex ? "100%" : i < currentIndex ? "100%" : "0%" }}
-              transition={{ duration: i === currentIndex ? 10 : 0, ease: "linear" }}
+              transition={{ duration: i === currentIndex ? 15 : 0, ease: "linear" }}
               className="h-full bg-red-500"
             />
           </div>
@@ -381,7 +425,6 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
             src={story.music_url} 
             loop 
             preload="auto"
-            crossOrigin="anonymous"
             className="hidden" 
           />
         </div>
@@ -397,6 +440,22 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
           </div>
         )}
       </div>
+
+      {/* Audio Blocked Hint */}
+      {story.music_url && !hasStartedPlaying && (
+        <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <motion.div 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-black/60 backdrop-blur-md px-6 py-4 rounded-3xl flex flex-col items-center gap-3 border border-white/20 shadow-2xl"
+          >
+            <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center animate-pulse">
+              <i className="fa-solid fa-volume-xmark text-2xl text-white"></i>
+            </div>
+            <p className="text-white font-black text-sm uppercase tracking-widest">Tap for sound</p>
+          </motion.div>
+        </div>
+      )}
 
       {/* Navigation Areas */}
       <div className="absolute inset-0 flex z-10">
