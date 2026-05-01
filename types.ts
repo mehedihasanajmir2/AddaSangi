@@ -1,4 +1,19 @@
 
+export interface Story {
+  id: string;
+  user_id: string;
+  type: 'image' | 'text';
+  content: string;
+  music_url?: string;
+  music_title?: string;
+  created_at: string;
+  user: {
+    id: string;
+    username: string;
+    avatar: string;
+  };
+}
+
 export interface User {
   id: string;
   username: string;
@@ -38,12 +53,6 @@ export interface Comment {
   username: string;
   text: string;
   timestamp: string;
-}
-
-export interface Story {
-  id: string;
-  user: User;
-  imageUrl: string;
 }
 
 // Added Chat interface for messaging component

@@ -59,31 +59,19 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLik
       <div className="bg-white md:bg-transparent p-4 md:p-0 shadow-sm md:shadow-none overflow-x-auto hide-scrollbar flex gap-2">
         {stories.map((story, i) => (
           <div key={story.id} className="relative w-28 h-48 md:w-32 md:h-52 rounded-xl overflow-hidden flex-shrink-0 shadow-sm border border-gray-100 cursor-pointer group">
-            <img src={story.imageUrl} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="story" />
+            <img 
+              src={story.type === 'image' ? story.content : `https://api.dicebear.com/7.x/initials/svg?seed=${story.content}`} 
+              className="w-full h-full object-cover transition-transform group-hover:scale-105" 
+              alt="story" 
+            />
             <div className="absolute inset-0 bg-black/20"></div>
             
-            {i === 0 ? (
-               <div className="absolute inset-0 flex flex-col">
-                  <div className="h-2/3 bg-gray-100 overflow-hidden">
-                    <img src={currentUser.avatar} className="w-full h-full object-cover" alt="" />
-                  </div>
-                  <div className="h-1/3 bg-white flex flex-col items-center justify-center relative">
-                    <div className="absolute -top-4 bg-[#1b5e20] text-white w-8 h-8 rounded-full flex items-center justify-center border-4 border-white group-hover:scale-110 transition-transform">
-                      <i className="fa-solid fa-plus text-xs"></i>
-                    </div>
-                    <span className="text-[10px] md:text-xs font-bold text-gray-900 mt-2">Create Story</span>
-                  </div>
-               </div>
-            ) : (
-              <>
-                <div className="absolute top-2 left-2 w-8 h-8 md:w-9 md:h-9 rounded-full border-4 border-[#1b5e20] p-0.5 overflow-hidden z-10">
-                  <img src={story.user.avatar} className="w-full h-full rounded-full object-cover" alt="" />
-                </div>
-                <div className="absolute bottom-2 left-2 right-2 z-10">
-                  <span className="text-[10px] md:text-xs font-bold text-white leading-tight block truncate drop-shadow-md">{story.user.username}</span>
-                </div>
-              </>
-            )}
+            <div className="absolute top-2 left-2 w-8 h-8 md:w-9 md:h-9 rounded-full border-4 border-[#1b5e20] p-0.5 overflow-hidden z-10">
+              <img src={story.user.avatar} className="w-full h-full rounded-full object-cover" alt="" />
+            </div>
+            <div className="absolute bottom-2 left-2 right-2 z-10">
+              <span className="text-[10px] md:text-xs font-bold text-white leading-tight block truncate drop-shadow-md">{story.user.username}</span>
+            </div>
           </div>
         ))}
       </div>

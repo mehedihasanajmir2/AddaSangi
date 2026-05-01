@@ -7,6 +7,7 @@ import Login from './components/Login';
 import Sidebar from './components/Sidebar';
 import ContactsSidebar from './components/ContactsSidebar';
 import Menu from './components/Menu';
+import StoryBar from './components/StoryBar';
 import TopNav from './components/TopNav';
 import SearchResults from './components/SearchResults';
 import Messaging from './components/Messaging';
@@ -303,12 +304,18 @@ const App: React.FC = () => {
             <Messaging currentUser={currentUser} targetUser={selectedChatUser} onStartCall={(type, user) => startCall(type, user)} />
           )}
           {activeTab === AppTab.STATUS && (
-            <div className="h-full bg-[#f0f2f5] flex flex-col items-center justify-center text-gray-400 p-10 text-center">
-               <div className="w-20 h-20 rounded-full border-4 border-dashed border-gray-200 flex items-center justify-center mb-4">
-                 <i className="fa-solid fa-circle-notch text-4xl opacity-20"></i>
+            <div className="h-full bg-[#f0f2f5] overflow-y-auto">
+               <StoryBar currentUser={currentUser} />
+               <div className="p-4">
+                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Social Status</h3>
+                 <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+                   <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <i className="fa-solid fa-bolt-lightning text-2xl text-red-600"></i>
+                   </div>
+                   <h4 className="font-bold text-gray-800">Global Updates</h4>
+                   <p className="text-xs text-gray-500 mt-2 leading-relaxed">See what everyone is sharing around Bangladesh. Statuses disappear after 24 hours.</p>
+                 </div>
                </div>
-               <h3 className="text-xl font-bold text-gray-800">Status</h3>
-               <p className="text-sm mt-2">Tap to add status update</p>
             </div>
           )}
           {activeTab === AppTab.CALLS && (
