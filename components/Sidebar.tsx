@@ -13,6 +13,8 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, user, onProfileClick, unreadMessagesCount = 0 }) => {
   const menuItems = [
     { id: AppTab.MESSAGES, icon: 'fa-message', label: 'Chats', color: 'text-[#b71c1c]' },
+    { id: AppTab.STATUS, icon: 'fa-bolt-lightning', label: 'Status', color: 'text-yellow-600' },
+    { id: AppTab.CALLS, icon: 'fa-phone', label: 'Calls', color: 'text-blue-600' },
     { id: AppTab.SEARCH, icon: 'fa-users', label: 'Find People', color: 'text-green-600' },
     { id: AppTab.NOTIFICATIONS, icon: 'fa-bell', label: 'Notifications', color: 'text-orange-600' },
     { id: AppTab.PROFILE, icon: 'fa-user', label: 'Profile', color: 'text-purple-600' },

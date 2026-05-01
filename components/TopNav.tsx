@@ -12,6 +12,8 @@ interface TopNavProps {
 const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, onProfileClick, unreadMessagesCount = 0 }) => {
   const tabs = [
     { id: AppTab.MESSAGES, icon: 'fa-message', label: 'Chats' },
+    { id: AppTab.STATUS, icon: 'fa-bolt-lightning', label: 'Status' },
+    { id: AppTab.CALLS, icon: 'fa-phone', label: 'Calls' },
     { id: AppTab.SEARCH, icon: 'fa-users', label: 'People' },
     { id: AppTab.NOTIFICATIONS, icon: 'fa-bell', label: 'Alerts' },
     { id: AppTab.MENU, icon: 'fa-bars', label: 'Settings' },
@@ -26,7 +28,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, onProfileClick,
   };
 
   return (
-    <nav className="fixed top-14 left-0 right-0 bg-[#b71c1c] border-b border-white/10 flex justify-center items-stretch z-40 h-14 shadow-md">
+    <nav className="bg-[#b71c1c] border-b border-white/10 flex justify-center items-stretch h-14 shadow-md shrink-0">
       <div className="flex w-full max-w-2xl px-2">
         {tabs.map(tab => {
           const isActive = activeTab === tab.id;

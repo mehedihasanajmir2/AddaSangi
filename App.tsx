@@ -270,20 +270,14 @@ const App: React.FC = () => {
       </header>
 
       {/* WhatsApp Style Tabs (Mobile Only) */}
-      <nav className="md:hidden h-12 bg-[#b71c1c] text-white flex items-stretch shrink-0 shadow-md">
-        <button onClick={() => setActiveTab(AppTab.MESSAGES)} className={`flex-1 flex flex-col items-center justify-center relative transition-all ${activeTab === AppTab.MESSAGES ? 'text-white' : 'text-white/60'}`}>
-          <span className="text-xs font-bold uppercase tracking-widest">Chats</span>
-          {activeTab === AppTab.MESSAGES && <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>}
-        </button>
-        <button onClick={() => setActiveTab(AppTab.STATUS)} className={`flex-1 flex flex-col items-center justify-center relative transition-all ${activeTab === AppTab.STATUS ? 'text-white' : 'text-white/60'}`}>
-          <span className="text-xs font-bold uppercase tracking-widest">Status</span>
-          {activeTab === AppTab.STATUS && <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>}
-        </button>
-        <button onClick={() => setActiveTab(AppTab.CALLS)} className={`flex-1 flex flex-col items-center justify-center relative transition-all ${activeTab === AppTab.CALLS ? 'text-white' : 'text-white/60'}`}>
-          <span className="text-xs font-bold uppercase tracking-widest">Calls</span>
-          {activeTab === AppTab.CALLS && <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>}
-        </button>
-      </nav>
+      <div className="md:hidden">
+        <TopNav 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab} 
+          onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
+          unreadMessagesCount={unreadMessagesCount}
+        />
+      </div>
 
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar 
