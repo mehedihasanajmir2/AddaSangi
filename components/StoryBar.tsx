@@ -142,7 +142,12 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
   };
 
   const [activeCategory, setActiveCategory] = useState<keyof typeof MUSIC_LIBRARY>('Bangla');
+  const [musicSearch, setMusicSearch] = useState('');
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
+
+  const filteredMusic = MUSIC_LIBRARY[activeCategory].filter(s => 
+    s.title.toLowerCase().includes(musicSearch.toLowerCase())
+  );
 
   useEffect(() => {
     if (selectedMusic && previewAudioRef.current) {
@@ -274,12 +279,23 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
               Add Music (Global Hits)
             </h3>
             
+            <div className="relative mb-3">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+              <input 
+                type="text" 
+                placeholder="Search 100k+ songs..." 
+                value={musicSearch}
+                onChange={(e) => setMusicSearch(e.target.value)}
+                className="w-full pl-8 pr-4 py-2 bg-gray-50 rounded-lg text-[10px] focus:ring-1 focus:ring-red-200 border-none outline-none"
+              />
+            </div>
+            
             <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
               {Object.keys(MUSIC_LIBRARY).map(cat => (
                 <button 
                   key={cat}
-                  onClick={() => setActiveCategory(cat as any)}
-                  className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${activeCategory === cat ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'}`}
+                  onClick={() => { setActiveCategory(cat as any); setMusicSearch(''); }}
+                  className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all shrink-0 ${activeCategory === cat ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'}`}
                 >
                   {cat}
                 </button>
@@ -287,7 +303,7 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
             </div>
 
             <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-              {MUSIC_LIBRARY[activeCategory].map(song => (
+              {filteredMusic.map(song => (
                 <button 
                   key={song.title}
                   onClick={() => setSelectedMusic(selectedMusic?.title === song.title ? null : song)}
@@ -296,6 +312,9 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
                   <i className="fa-solid fa-play mr-1 opacity-50"></i> {song.title}
                 </button>
               ))}
+              {filteredMusic.length === 0 && (
+                <p className="col-span-2 text-center py-4 text-[10px] text-gray-400 italic">No songs found in this category.</p>
+              )}
             </div>
             {selectedMusic && (
               <div className="mt-3 p-2 bg-red-50 rounded-lg flex items-center justify-between">
