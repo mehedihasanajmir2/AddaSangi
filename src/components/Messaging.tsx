@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { supabase } from '../services/supabaseClient.ts';
+import { getSupabase } from '../services/supabaseClient';
 
 interface MessagePreview extends User {
   lastMessage?: string;
@@ -17,6 +17,7 @@ interface MessagingProps {
 }
 
 const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartCall }) => {
+  const supabase = getSupabase();
   const [activeChat, setActiveChat] = useState<User | null>(targetUser || null);
   const channelRef = useRef<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -92,7 +93,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .select('contact_id, hidden_until')
         .eq('user_id', currentUser.id);
 
-      const { data: msgs, error } = await supabase
+      const { data: msgs, error } = await getSupabase()
         .from('messages')
         .select('*')
         .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
@@ -126,7 +127,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
         const uids = Array.from(contactMap.keys());
         if (uids.length > 0) {
-          const { data: profiles } = await supabase.from('profiles').select('*').in('id', uids);
+          const { data: profiles } = await getSupabase().from('profiles').select('*').in('id', uids);
           
           const formattedInbox = uids.map(uid => {
             const profile = profiles?.find(p => String(p.id) === uid);
@@ -158,7 +159,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     
     // Subscribe using a more stable channel
     const channelName = `realtime_messages_main_${currentUser.id}`;
-    const channel = supabase.channel(channelName)
+    const channel = getSupabase().channel(channelName)
       .on('postgres_changes' as any, { 
         event: '*', 
         table: 'messages',
@@ -199,7 +200,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       });
 
     // Subscribe to block list updates and general database changes
-    const blockChannel = supabase.channel(`blocks_realtime_${currentUser.id}`)
+    const blockChannel = getSupabase().channel(`blocks_realtime_${currentUser.id}`)
       .on('postgres_changes' as any, { 
         event: '*', 
         table: 'user_blocks', 
@@ -217,8 +218,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     channelRef.current = channel;
 
     return () => { 
-      supabase.removeChannel(channel);
-      supabase.removeChannel(blockChannel);
+      getSupabase().removeChannel(channel);
+      getSupabase().removeChannel(blockChannel);
       channelRef.current = null;
     };
   }, [currentUser.id]);
@@ -270,7 +271,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     if (!targetId) return;
 
     try {
-      await supabase
+      await getSupabase()
         .from('messages')
         .update({ is_seen: true })
         .eq('sender_id', targetId)
@@ -304,7 +305,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .eq('contact_id', activeChat!.id)
         .maybeSingle();
 
-      const { data } = await supabase
+      const { data } = await getSupabase()
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${activeChat!.id}),and(sender_id.eq.${activeChat!.id},receiver_id.eq.${currentUser.id})`)

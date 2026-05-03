@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Post, Story, User, ReactionType } from '../types.ts';
-import PostCard from './PostCard.tsx';
+import { Post, Story, User, ReactionType } from '../types';
+import PostCard from './PostCard';
 
 interface FeedProps {
   posts: Post[];
