@@ -12,7 +12,7 @@ import TopNav from './components/TopNav';
 import SearchResults from './components/SearchResults';
 import Messaging from './components/Messaging';
 import CallingOverlay from './components/CallingOverlay';
-import { getSupabase } from './services/supabaseClient';
+import { supabase } from './services/supabaseClient';
 
 const LOGO_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjbaxCAakhVQOly5IhXfPkpbunmcsxREDf2xali0fkLp9gK5qNdh2KL-UhEmDICRaX6_HtDBQTKM6jgtCJuTzrjpKUynSLe6NCzCvRpCs8C6dBgy2wGzEmcV-EIdxh5r73ExANoAyfIufc5JdfXfY1Xal6BSK0fdnqwK0VCkOZTfEdb_GMAiBB-aB9wedf0/s1600/Gemini_Generated_Image_pnxgvipnxgvipnxg.png";
 const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"; 
@@ -62,7 +62,7 @@ const App: React.FC = () => {
       };
       setCurrentUser(fallbackUser);
 
-      const { data: profile, error } = await getSupabase().from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
+      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', userAuth.id).maybeSingle();
       
       if (profile) {
         setCurrentUser({
@@ -80,33 +80,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const supabase = getSupabase();
-
-  if (!supabase) {
-    return (
-      <div className="min-h-screen bg-green-50 flex items-center justify-center p-6 text-center">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md border border-green-100">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <i className="fa-solid fa-key text-green-600 text-3xl"></i>
-          </div>
-          <h1 className="text-2xl font-black text-gray-900 mb-4">Configuration Required</h1>
-          <p className="text-gray-600 mb-8 leading-relaxed">
-            To start using <strong>AddaSangi</strong>, you need to connect your Supabase project. 
-            Please add your API keys in the <strong>Settings</strong> menu.
-          </p>
-          <div className="space-y-3 text-left bg-gray-50 p-4 rounded-xl mb-6">
-            <code className="block text-xs font-bold text-gray-400 uppercase">Required Variables:</code>
-            <code className="block text-sm text-green-700">VITE_SUPABASE_URL</code>
-            <code className="block text-sm text-green-700">VITE_SUPABASE_ANON_KEY</code>
-          </div>
-          <p className="text-xs text-gray-400 italic">
-            Once configured, refresh the page to start your gossip session!
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   useEffect(() => {
     const init = async () => {
       try {
@@ -117,7 +90,7 @@ const App: React.FC = () => {
       finally { setLoadingSession(false); }
     };
     init();
-    const { data: { subscription } } = getSupabase().auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       if (s) fetchProfile(s.user);
       else setCurrentUser(null);
@@ -126,8 +99,8 @@ const App: React.FC = () => {
   }, [fetchProfile]);
 
   useEffect(() => {
-    if (!currentUser || !getSupabase()) return;
-    const signalChannel = getSupabase().channel(`calls:${currentUser.id}`)
+    if (!currentUser) return;
+    const signalChannel = supabase.channel(`calls:${currentUser.id}`)
       .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
         if (!isCalling) {
           setCallingUser(payload.caller);
@@ -142,18 +115,18 @@ const App: React.FC = () => {
         setIsIncoming(false);
       })
       .subscribe();
-    return () => { getSupabase().removeChannel(signalChannel); };
+    return () => { supabase.removeChannel(signalChannel); };
   }, [currentUser, isCalling]);
 
   useEffect(() => {
-    if (!currentUser || !getSupabase()) return;
-    const channel = getSupabase().channel('app_global_realtime_v3')
+    if (!currentUser) return;
+    const channel = supabase.channel('app_global_realtime_v3')
       .on('postgres_changes' as any, { event: 'INSERT', table: 'messages' }, async (payload: any) => {
         const msg = payload.new;
         if (String(msg.receiver_id) === String(currentUser.id) && String(msg.sender_id) !== String(currentUser.id)) {
           playNotificationSound();
           if (activeTab !== AppTab.MESSAGES) setUnreadMessagesCount(prev => prev + 1);
-          const { data: sender } = await getSupabase().from('profiles').select('full_name').eq('id', msg.sender_id).maybeSingle();
+          const { data: sender } = await supabase.from('profiles').select('full_name').eq('id', msg.sender_id).maybeSingle();
           setActiveNotification({
             senderName: sender?.full_name || 'AddaSangi User',
             text: msg.content
@@ -162,14 +135,14 @@ const App: React.FC = () => {
         }
       })
       .subscribe();
-    return () => { getSupabase().removeChannel(channel); };
+    return () => { supabase.removeChannel(channel); };
   }, [currentUser, activeTab, playNotificationSound]);
 
   const loadFeed = async () => {
     if (!session) return;
     setLoading(true);
     try {
-      const { data: dbPosts } = await getSupabase().from('posts').select(`*, profiles(*), reactions(*), comments(*, profiles(full_name))`).order('created_at', { ascending: false });
+      const { data: dbPosts } = await supabase.from('posts').select(`*, profiles(*), reactions(*), comments(*, profiles(full_name))`).order('created_at', { ascending: false });
       if (dbPosts) {
         setPosts(dbPosts.map((p: any) => ({
           id: p.id,
@@ -194,7 +167,7 @@ const App: React.FC = () => {
         return;
       }
       try {
-        const { data: profiles } = await getSupabase()
+        const { data: profiles } = await supabase
           .from('profiles')
           .select('*')
           .ilike('full_name', `%${searchQuery}%`)
@@ -229,7 +202,7 @@ const App: React.FC = () => {
     setCallingUser(target);
     setIsIncoming(false);
     setIsCalling(true);
-    const channel = getSupabase().channel(`calls:${target.id}`);
+    const channel = supabase.channel(`calls:${target.id}`);
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         channel.send({ type: 'broadcast', event: 'incoming_call', payload: { caller: currentUser, callType: type } });
@@ -239,7 +212,7 @@ const App: React.FC = () => {
 
   const endCall = () => {
     if (callingUser && currentUser) {
-      const channel = getSupabase().channel(`calls:${callingUser.id}`);
+      const channel = supabase.channel(`calls:${callingUser.id}`);
       channel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           channel.send({ type: 'broadcast', event: 'call_ended', payload: { from: currentUser.id } });
@@ -253,7 +226,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      const { error } = await getSupabase().auth.signOut();
+      const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setSession(null);
       setCurrentUser(null);

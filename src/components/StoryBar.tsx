@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Story, User } from '../types';
-import { getSupabase } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 
 interface StoryBarProps {
   currentUser: User;
@@ -18,7 +18,7 @@ const StoryBar: React.FC<StoryBarProps> = ({ currentUser }) => {
 
   const fetchStories = async () => {
     // In a real app, you'd filter for last 24h
-    const { data, error } = await getSupabase()
+    const { data, error } = await supabase
       .from('stories')
       .select('*, user:profiles(id, full_name, avatar_url)')
       .order('created_at', { ascending: false });
@@ -188,20 +188,20 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
         // Upload image to Supabase
         const blob = await (await fetch(previewUrl)).blob();
         const fileName = `story_${currentUser.id}_${Date.now()}.png`;
-        const { error: uploadError } = await getSupabase().storage
+        const { error: uploadError } = await supabase.storage
           .from('messages')
           .upload(`stories/${fileName}`, blob);
         
         if (uploadError) throw uploadError;
         
-        const { data: { publicUrl } } = getSupabase().storage
+        const { data: { publicUrl } } = supabase.storage
           .from('messages')
           .getPublicUrl(`stories/${fileName}`);
         
         finalContent = publicUrl;
       }
 
-      const { error } = await getSupabase()
+      const { error } = await supabase
         .from('stories')
         .insert({
           user_id: currentUser.id,
