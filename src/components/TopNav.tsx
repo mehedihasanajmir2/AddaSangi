@@ -12,6 +12,7 @@ interface TopNavProps {
 const TopNav: React.FC<TopNavProps> = ({ activeTab, onTabChange, onProfileClick, unreadMessagesCount }) => {
   const tabs = [
     { id: AppTab.MESSAGES, label: 'CHATS', badge: unreadMessagesCount },
+    { id: AppTab.FEED, label: 'COMMUNITY', badge: 0 },
     { id: AppTab.STATUS, label: 'STATUS', badge: 0 },
     { id: AppTab.CALLS, label: 'CALLS', badge: 0 },
   ];

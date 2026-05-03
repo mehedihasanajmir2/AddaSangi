@@ -14,9 +14,10 @@ interface MessagingProps {
   currentUser: User;
   targetUser?: User | null;
   onStartCall?: (type: 'audio' | 'video', target: User) => void;
+  onViewProfile?: (user: User) => void;
 }
 
-const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartCall }) => {
+const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartCall, onViewProfile }) => {
   const [activeChat, setActiveChat] = useState<User | null>(targetUser || null);
   const channelRef = useRef<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -675,10 +676,10 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .upload(`voice/${fileName}`, blob);
 
       if (error) {
-        if (error.message.includes('bucket not found')) {
-          alert("Audio upload failed: 'messages' bucket doesn't exist in Supabase storage.");
+        if (error.message.includes('bucket_not_found') || error.message.includes('bucket not found')) {
+          alert("Error: Supabase Storage folder 'messages' খুঁজে পাওয়া যায়নি। দয়া করে আপনার Supabase Dashboard-এ গিয়ে 'Storage' সেকশনে 'messages' নামে একটি Public Bucket তৈরি করুন।");
         } else {
-          throw error;
+          alert("File upload error: " + error.message);
         }
         return;
       }
@@ -718,7 +719,15 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         .from('messages')
         .upload(`images/${fileName}`, file);
 
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('bucket_not_found') || error.message.includes('bucket not found')) {
+          alert("Error: Supabase Storage folder 'messages' খুঁজে পাওয়া যায়নি। আড্ডাসঙ্গীর ফটো শেয়ারিং সচল করতে Supabase Dashboard-এ 'Storage' সেকশনে 'messages' নামে একটি Public Bucket তৈরি করুন।");
+        } else {
+          alert("Upload failed: " + error.message);
+        }
+        setIsSending(false);
+        return;
+      }
 
       const { data: { publicUrl } } = supabase.storage
         .from('messages')
@@ -1156,6 +1165,14 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                         <button 
                           onClick={() => fileInputRef.current?.click()}
                           className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"
+                          title="Share Image"
+                        >
+                          <i className="fa-solid fa-paperclip text-lg"></i>
+                        </button>
+                         <button 
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-10 h-10 flex items-center justify-center text-white/70 hover:text-white"
+                          title="Camera"
                         >
                           <i className="fa-solid fa-camera text-lg"></i>
                         </button>

@@ -61,6 +61,40 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [year, setYear] = useState('');
   const [gender, setGender] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [resendTimer, setResendTimer] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let interval: any;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
+
+  const handleResendEmail = async () => {
+    if (resendTimer > 0 || resendLoading) return;
+    setResendLoading(true);
+    setError(null);
+    setResendMessage(null);
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+      });
+      if (error) throw error;
+      setResendMessage('Verification email resent successfully!');
+      setResendTimer(30); // 30 seconds cooldown
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   const getDaysInMonth = (m: string, y: string) => {
     if (!m) return 31;
@@ -186,11 +220,26 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               setIsVerifyingEmail(false);
               setIsSignUp(false);
               setError(null);
+              setResendMessage(null);
             }}
             className="w-full bg-[#1b5e20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all active:scale-95"
           >
             Login Now
           </button>
+          
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <p className="text-gray-500 text-xs">Email na pele?</p>
+            <button 
+              onClick={handleResendEmail}
+              disabled={resendTimer > 0 || resendLoading}
+              className="text-[#1b5e20] font-black text-sm hover:underline disabled:opacity-50 disabled:no-underline"
+            >
+              {resendLoading ? 'Sending...' : resendTimer > 0 ? `Resend Email (${resendTimer}s)` : 'Resend Verification Email'}
+            </button>
+            {resendMessage && <p className="text-green-600 text-[10px] font-bold animate-pulse">{resendMessage}</p>}
+            {error && isVerifyingEmail && <p className="text-red-500 text-[10px] font-bold">{error}</p>}
+          </div>
+
           <p className="mt-6 text-xs text-gray-400">
             Email na pele apnar Spam folder check korun.
           </p>

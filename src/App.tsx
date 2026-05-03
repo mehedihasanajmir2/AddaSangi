@@ -209,6 +209,24 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  const handleLike = async (postId: string, reaction?: string) => {
+    if (!currentUser) return;
+    try {
+      if (reaction) {
+        await supabase.from('reactions').upsert({
+          post_id: postId,
+          user_id: currentUser.id,
+          reaction_type: reaction
+        });
+      } else {
+        await supabase.from('reactions').delete().eq('post_id', postId).eq('user_id', currentUser.id);
+      }
+      loadFeed();
+    } catch (err) {
+      console.error("Like Error:", err);
+    }
+  };
+
   const startCall = (type: 'audio' | 'video' = 'video', target: User | null = null) => {
     if (!target || !currentUser) return;
     setCallType(type);
@@ -329,9 +347,51 @@ const App: React.FC = () => {
         />
         {/* Main Content Area - Full Screen for WhatsApp feel */}
         <main className="flex-1 h-full overflow-hidden bg-white">
+          {activeTab === AppTab.FEED && (
+             <div className="h-full bg-[#f0f2f5] overflow-y-auto pb-20">
+                <StoryBar 
+                  currentUser={currentUser} 
+                  onViewProfile={(user) => {
+                    setProfileUser(user);
+                    setActiveTab(AppTab.PROFILE);
+                  }} 
+                />
+                <Feed 
+                  posts={posts} 
+                  stories={[]} 
+                  loading={loading} 
+                  currentUser={currentUser} 
+                  onLike={handleLike} 
+                  onRefresh={loadFeed} 
+                  onPostCreate={() => {}}
+                  onPostDelete={loadFeed}
+                  onProfileClick={() => {
+                    setProfileUser(null);
+                    setActiveTab(AppTab.PROFILE);
+                  }}
+                  onViewProfile={(user) => {
+                    setProfileUser(user);
+                    setActiveTab(AppTab.PROFILE);
+                  }}
+                />
+             </div>
+          )}
           {activeTab === AppTab.SEARCH && (
             <div className="h-full bg-white overflow-y-auto">
-              <SearchResults results={searchResults} query={searchQuery} onQueryChange={setSearchQuery} onUserSelect={(u) => {setSelectedChatUser(u); setActiveTab(AppTab.MESSAGES);}} />
+              <SearchResults 
+                results={searchResults} 
+                query={searchQuery} 
+                onQueryChange={setSearchQuery} 
+                onUserSelect={(u) => {
+                  setSelectedChatUser(u); 
+                  setActiveTab(AppTab.MESSAGES);
+                }} 
+                onViewProfile={(u) => {
+                  setProfileUser(u);
+                  setActiveTab(AppTab.PROFILE);
+                  setSearchQuery('');
+                }}
+              />
             </div>
           )}
           {activeTab === AppTab.MESSAGES && (
