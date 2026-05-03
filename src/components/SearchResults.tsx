@@ -51,9 +51,6 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results, query, onQueryCh
               <img src={user.avatar} className="w-14 h-14 rounded-full object-cover border border-gray-100" alt="" />
               <div className="text-left flex-1">
                 <h4 className="font-bold text-gray-900">{user.full_name}</h4>
-                <div className="flex items-center gap-1 mb-1">
-                  <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">@{user.username}</span>
-                </div>
                 <p className="text-xs text-gray-500 truncate max-w-[200px]">{user.bio || 'AddaSangi Member'}</p>
               </div>
               <i className="fa-solid fa-plus text-[#1b5e20] bg-green-50 w-8 h-8 rounded-full flex items-center justify-center"></i>

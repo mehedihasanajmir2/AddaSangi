@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Post } from '../types';
 import PostCard from './PostCard';
+import { supabase } from '../services/supabaseClient';
 
 interface ProfileProps {
   user: User;
@@ -16,10 +17,63 @@ interface ProfileProps {
 const Profile: React.FC<ProfileProps> = ({ user, posts, isOwnProfile, currentUser, onPostDelete, onLike, onUpdateProfile }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedUser, setEditedUser] = useState(user);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isUsernameAvailable, setIsUsernameAvailable] = useState<boolean | null>(null);
 
-  const handleSave = () => {
-    onUpdateProfile?.(editedUser);
-    setIsEditing(false);
+  const checkUsername = async (username: string) => {
+    if (!username || username === user.username) {
+      setIsUsernameAvailable(null);
+      return;
+    }
+    if (username.length < 3) {
+      setIsUsernameAvailable(false);
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username.toLowerCase())
+        .maybeSingle();
+      
+      setIsUsernameAvailable(!data);
+    } catch (err) {
+      setIsUsernameAvailable(null);
+    }
+  };
+
+  const handleSave = async () => {
+    if (editedUser.username !== user.username && isUsernameAvailable === false) {
+      setError('This username is already taken!');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          username: editedUser.username.toLowerCase(),
+          full_name: editedUser.full_name,
+          bio: editedUser.bio,
+          avatar_url: editedUser.avatar,
+          cover_url: editedUser.coverUrl,
+          updated_at: new Date().toISOString()
+        });
+
+      if (updateError) throw updateError;
+      
+      onUpdateProfile?.(editedUser);
+      setIsEditing(false);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -63,14 +117,28 @@ const Profile: React.FC<ProfileProps> = ({ user, posts, isOwnProfile, currentUse
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase opacity-50">Username (Unique - Cannot be changed)</label>
-                <input 
-                  type="text" 
-                  value={editedUser.username} 
-                  disabled
-                  className="w-full p-3 bg-gray-100 border border-gray-100 rounded-lg outline-none text-gray-400 cursor-not-allowed"
-                />
+                <label className="text-xs font-bold text-gray-500 uppercase">Username (Unique Search ID)</label>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    value={editedUser.username} 
+                    onChange={e => {
+                      const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+                      setEditedUser({...editedUser, username: val});
+                      checkUsername(val);
+                    }}
+                    className={`w-full p-3 bg-gray-50 border rounded-lg outline-none focus:border-[#1b5e20] transition-all font-bold ${
+                      isUsernameAvailable === false ? 'border-red-500' : 'border-gray-200'
+                    }`}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {isUsernameAvailable === true && <i className="fa-solid fa-circle-check text-green-500"></i>}
+                    {isUsernameAvailable === false && <i className="fa-solid fa-circle-xmark text-red-500"></i>}
+                  </div>
+                </div>
+                {isUsernameAvailable === false && <p className="text-red-500 text-[10px] mt-1 font-bold">This username is already taken!</p>}
               </div>
+              {error && <p className="text-red-500 text-xs font-bold bg-red-50 p-2 rounded">{error}</p>}
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Bio</label>
                 <textarea 
@@ -81,9 +149,10 @@ const Profile: React.FC<ProfileProps> = ({ user, posts, isOwnProfile, currentUse
               </div>
               <button 
                 onClick={handleSave}
-                className="w-full bg-[#1b5e20] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#144d18] transition-colors"
+                disabled={loading || (editedUser.username !== user.username && isUsernameAvailable === false)}
+                className="w-full bg-[#1b5e20] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#144d18] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save Changes
+                {loading ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           ) : (

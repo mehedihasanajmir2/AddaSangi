@@ -156,7 +156,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         onLogin();
       }
     } catch (err: any) {
-      setError(err.message || (isSignUp ? 'Registration failed' : 'Login failed'));
+      let msg = err.message || (isSignUp ? 'Registration failed' : 'Login failed');
+      if (msg.includes('Email rate limit exceeded')) {
+        msg = 'Too many requests! Email rate limit exceeded. Please wait for an hour and try again.';
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

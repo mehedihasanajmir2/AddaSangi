@@ -30,8 +30,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onLike, onDelete
           <div>
             <h4 className="font-bold text-sm text-gray-900">{post.user.full_name}</h4>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-green-600">@{post.user.username}</span>
-              <span className="text-[10px] text-gray-400">•</span>
               <span className="text-[10px] text-gray-500">{post.timestamp}</span>
             </div>
           </div>

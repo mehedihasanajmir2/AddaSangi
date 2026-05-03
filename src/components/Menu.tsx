@@ -22,7 +22,7 @@ const Menu: React.FC<MenuProps> = ({ user, onLogout, onProfileClick }) => {
         <img src={user.avatar} className="w-16 h-16 rounded-full border-2 border-gray-50 object-cover" alt="" />
         <div>
           <h2 className="text-xl font-bold text-gray-900">{user.full_name}</h2>
-          <p className="text-xs text-green-600 font-bold">@{user.username}</p>
+          <p className="text-xs text-gray-500 font-medium">AddaSangi Member</p>
         </div>
       </div>
 

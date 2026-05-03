@@ -861,7 +861,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                     <div className="flex justify-between items-baseline">
                       <div className="flex items-center gap-1 min-w-0">
                         <h4 className="font-bold text-gray-900 truncate text-sm">{user.full_name}</h4>
-                        <span className="text-[10px] text-green-600 font-bold shrink-0">@{user.username}</span>
                       </div>
                       <span className="text-[10px] text-gray-400 font-medium">
                         {user.lastMessageTime ? new Date(user.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -897,7 +896,6 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                 <img src={activeChat.avatar} className="w-10 h-10 rounded-full object-cover border border-white/20 shadow-sm" alt="" />
                 <div>
                   <h3 className="font-bold text-white leading-tight text-sm">{activeChat.full_name}</h3>
-                  <p className="text-[10px] text-white/70 font-medium font-mono tracking-tighter">@{activeChat.username}</p>
                 </div>
               </div>
               <div className="flex items-center gap-4 relative">

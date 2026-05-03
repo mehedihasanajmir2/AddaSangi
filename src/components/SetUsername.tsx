@@ -37,10 +37,15 @@ const SetUsername: React.FC<SetUsernameProps> = ({ user, onComplete }) => {
     setError(null);
 
     try {
+      // Use upsert to handle cases where the profile row might not exist yet for old accounts
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ username: username.toLowerCase() })
-        .eq('id', user.id);
+        .upsert({ 
+          id: user.id,
+          username: username.toLowerCase(),
+          full_name: user.full_name,
+          updated_at: new Date().toISOString()
+        });
 
       if (updateError) throw updateError;
       onComplete(username.toLowerCase());
