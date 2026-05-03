@@ -614,9 +614,19 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
   };
 
   const startVoiceRecording = async () => {
+    if (!window.MediaRecorder) {
+      alert("আপনার ব্রাউজার voice recording সাপোর্ট করে না।");
+      return;
+    }
+    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+        ? 'audio/webm' 
+        : 'audio/mp4'; // fallback for Safari/mobile
+        
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -625,9 +635,11 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        if (audioBlob.size > 1000) { // Only upload if more than ~1sec
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size > 500) { 
           await uploadVoiceMessage(audioBlob);
+        } else {
+          console.warn("Audio too short, skipping upload");
         }
         setRecordingDuration(0);
         stream.getTracks().forEach(track => track.stop());
@@ -639,9 +651,13 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
       recordingIntervalRef.current = setInterval(() => {
         setRecordingDuration(prev => prev + 1);
       }, 1000);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Mic Error:", err);
-      alert("Microphone access denied or not available.");
+      if (err.name === 'NotAllowedError') {
+        alert("Microphone permission denied. সেটিংস থেকে পারমিশন ইনঅ্যাবল করুন।");
+      } else {
+        alert("Microphone error: " + err.message);
+      }
     }
   };
 
@@ -670,16 +686,17 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
     if (!activeChat) return;
     setIsSending(true);
     try {
-      const fileName = `voice_${currentUser.id}_${Date.now()}.webm`;
+      const extension = blob.type.includes('mp4') ? 'mp4' : 'webm';
+      const fileName = `voice_${currentUser.id}_${Date.now()}.${extension}`;
       const { data, error } = await supabase.storage
         .from('messages')
         .upload(`voice/${fileName}`, blob);
 
       if (error) {
         if (error.message.includes('bucket_not_found') || error.message.includes('bucket not found')) {
-          alert("Error: 'messages' নামের Supabase Storage Bucket খুঁজে পাওয়া যায়নি।\n\nসমাধান:\n১. আপনার Supabase Dashboard-এ যান।\n২. 'Storage' সেকশনে যান।\n৩. 'NEW BUCKET' বাটনে ক্লিক করে 'messages' নামে একটি bucket তৈরি করুন।\n৪. অবশ্যই bucket-টি 'Public' করুন।");
+          alert("Error: 'messages' নামের Supabase Storage Bucket পাওয়া যায়নি।\n\nকিভাবে ঠিক করবেন:\n১. Supabase Dashboard-এ 'Storage' সেকশনে যান।\n২. 'messages' নামে একটি Bucket তৈরি করুন।\n৩. Bucket-টি 'Public' সিলেক্ট করুন।\n৪. 'Policies' ট্যাবে গিয়ে Authenticated ইউজারদের জন্য Insert এবং Select পারমিশন দিন।");
         } else {
-          alert("Voice upload error: " + error.message);
+          alert("Voice upload error: " + error.message + "\n\nStorage Policy ঠিক আছে কিনা চেক করুন।");
         }
         return;
       }
@@ -721,9 +738,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
       if (error) {
         if (error.message.includes('bucket_not_found') || error.message.includes('bucket not found')) {
-          alert("Error: 'messages' নামের Supabase Storage Bucket খুঁজে পাওয়া যায়নি। আড্ডাসঙ্গীর ফটো শেয়ারিং সচল করতে Supabase Dashboard-এ 'Storage' সেকশনে 'messages' নামে একটি Public Bucket তৈরি করুন।");
+          alert("Error: 'messages' নামের Supabase Storage Bucket পাওয়া যায়নি।\n\nকিভাবে ঠিক করবেন:\n১. Supabase Dashboard-এ 'Storage' সেকশনে যান।\n২. 'messages' নামে একটি Bucket তৈরি করুন।\n৩. Bucket-টি 'Public' সিলেক্ট করুন।\n৪. 'Policies' ট্যাবে গিয়ে Authenticated ইউজারদের জন্য Insert এবং Select পারমিশন দিন।");
         } else {
-          alert("Upload failed: " + error.message);
+          alert("Photo upload failed: " + error.message + "\n\nStorage Policy ঠিক আছে কিনা চেক করুন।");
         }
         setIsSending(false);
         return;
@@ -1157,7 +1174,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                           type="file" 
                           ref={fileInputRef} 
                           className="hidden" 
-                          accept="image/*" 
+                          accept="image/*"
+                          capture="environment"
                           onChange={handleFileSelect} 
                         />
                         <button 
