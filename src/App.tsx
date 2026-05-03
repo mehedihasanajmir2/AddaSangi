@@ -21,6 +21,7 @@ const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2869
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [isProfileReady, setIsProfileReady] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.MESSAGES);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -28,6 +29,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [selectedChatUser, setSelectedChatUser] = useState<User | null>(null);
+  const [profileUser, setProfileUser] = useState<User | null>(null);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   
   const [isCalling, setIsCalling] = useState(false);
@@ -78,8 +80,10 @@ const App: React.FC = () => {
           location: profile.location || 'Bangladesh'
         });
       }
+      setIsProfileReady(true);
     } catch (err) { 
       console.error("Profile Fetch Error:", err);
+      setIsProfileReady(true);
     }
   }, []);
 
@@ -95,8 +99,13 @@ const App: React.FC = () => {
     init();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (s) fetchProfile(s.user);
-      else setCurrentUser(null);
+      if (s) {
+        setIsProfileReady(false); // Reset to ensure we fetch full profile for new session
+        fetchProfile(s.user);
+      } else {
+        setCurrentUser(null);
+        setIsProfileReady(false);
+      }
     });
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
@@ -263,7 +272,7 @@ const App: React.FC = () => {
   }
 
   // FORCE USERNAME SELECTION
-  if (!currentUser.username) {
+  if (isProfileReady && !currentUser.username) {
     return (
       <SetUsername 
         user={currentUser} 
@@ -271,6 +280,15 @@ const App: React.FC = () => {
           setCurrentUser(prev => prev ? { ...prev, username: newUsername } : null);
         }} 
       />
+    );
+  }
+
+  if (!isProfileReady) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <img src={LOGO_URL} className="w-20 h-20 animate-bounce mb-4" alt="" />
+        <p className="text-[#1b5e20] font-black animate-pulse text-lg">মেম্বার প্রোফাইল লোড হচ্ছে...</p>
+      </div>
     );
   }
 
@@ -290,7 +308,10 @@ const App: React.FC = () => {
         <TopNav 
           activeTab={activeTab} 
           onTabChange={setActiveTab} 
-          onProfileClick={() => setActiveTab(AppTab.PROFILE)} 
+          onProfileClick={() => {
+            setProfileUser(null);
+            setActiveTab(AppTab.PROFILE);
+          }} 
           unreadMessagesCount={unreadMessagesCount}
         />
       </div>
@@ -300,7 +321,10 @@ const App: React.FC = () => {
           activeTab={activeTab} 
           onTabChange={setActiveTab} 
           user={currentUser} 
-          onProfileClick={() => setActiveTab(AppTab.PROFILE)}
+          onProfileClick={() => {
+            setProfileUser(null);
+            setActiveTab(AppTab.PROFILE);
+          }}
           unreadMessagesCount={unreadMessagesCount}
         />
         {/* Main Content Area - Full Screen for WhatsApp feel */}
@@ -311,11 +335,25 @@ const App: React.FC = () => {
             </div>
           )}
           {activeTab === AppTab.MESSAGES && (
-            <Messaging currentUser={currentUser} targetUser={selectedChatUser} onStartCall={(type, user) => startCall(type, user)} />
+            <Messaging 
+              currentUser={currentUser} 
+              targetUser={selectedChatUser} 
+              onStartCall={(type, user) => startCall(type, user)} 
+              onViewProfile={(user) => {
+                setProfileUser(user);
+                setActiveTab(AppTab.PROFILE);
+              }}
+            />
           )}
           {activeTab === AppTab.STATUS && (
             <div className="h-full bg-[#f0f2f5] overflow-y-auto">
-               <StoryBar currentUser={currentUser} />
+               <StoryBar 
+                 currentUser={currentUser} 
+                 onViewProfile={(user) => {
+                   setProfileUser(user);
+                   setActiveTab(AppTab.PROFILE);
+                 }}
+               />
                <div className="p-4">
                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Social Status</h3>
                  <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
@@ -340,22 +378,31 @@ const App: React.FC = () => {
           {activeTab === AppTab.PROFILE && (
             <div className="h-full bg-[#e8f5e9] overflow-y-auto p-4">
                <Profile 
-                 user={currentUser} 
-                 posts={posts.filter(p => p.user.id === currentUser.id)} 
-                 isOwnProfile={true} 
+                 user={profileUser || currentUser} 
+                 posts={posts.filter(p => p.user.id === (profileUser?.id || currentUser.id))} 
+                 isOwnProfile={!profileUser || profileUser.id === currentUser.id} 
                  currentUser={currentUser} 
                  onPostDelete={loadFeed} 
                  onLike={loadFeed} 
                  onUpdateProfile={(updatedData) => {
-                   setCurrentUser(prev => prev ? { ...prev, ...updatedData } : null);
-                   loadFeed(); // Refresh feed to show updated avatar in posts
+                   if (!profileUser || profileUser.id === currentUser.id) {
+                     setCurrentUser(prev => prev ? { ...prev, ...updatedData } : null);
+                   }
+                   loadFeed();
                  }} 
                />
             </div>
           )}
           {activeTab === AppTab.MENU && (
             <div className="h-full bg-[#e8f5e9] overflow-y-auto p-4">
-              <Menu user={currentUser} onLogout={handleLogout} onProfileClick={() => setActiveTab(AppTab.PROFILE)} />
+              <Menu 
+                user={currentUser} 
+                onLogout={handleLogout} 
+                onProfileClick={() => {
+                  setProfileUser(null);
+                  setActiveTab(AppTab.PROFILE);
+                }} 
+              />
             </div>
           )}
         </main>

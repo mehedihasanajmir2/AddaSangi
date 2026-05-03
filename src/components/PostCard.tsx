@@ -7,9 +7,10 @@ interface PostCardProps {
   currentUser: User;
   onLike: (reaction?: ReactionType) => void;
   onDelete: () => void;
+  onViewProfile?: (user: User) => void;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onLike, onDelete }) => {
+const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onLike, onDelete, onViewProfile }) => {
   const [showReactions, setShowReactions] = useState(false);
   const [commentText, setCommentText] = useState('');
 
@@ -25,7 +26,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onLike, onDelete
   return (
     <div className="bg-white border border-gray-100 mb-4 shadow-sm">
       <div className="p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div 
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() => onViewProfile?.(post.user)}
+        >
           <img src={post.user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
           <div>
             <h4 className="font-bold text-sm text-gray-900">{post.user.full_name}</h4>

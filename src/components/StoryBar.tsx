@@ -5,9 +5,10 @@ import { supabase } from '../services/supabaseClient';
 
 interface StoryBarProps {
   currentUser: User;
+  onViewProfile?: (user: User) => void;
 }
 
-const StoryBar: React.FC<StoryBarProps> = ({ currentUser }) => {
+const StoryBar: React.FC<StoryBarProps> = ({ currentUser, onViewProfile }) => {
   const [stories, setStories] = useState<Story[]>([]);
   const [isCreatorOpen, setIsCreatorOpen] = useState(false);
   const [selectedStoryIndex, setSelectedStoryIndex] = useState<number | null>(null);
@@ -20,7 +21,7 @@ const StoryBar: React.FC<StoryBarProps> = ({ currentUser }) => {
     // In a real app, you'd filter for last 24h
     const { data, error } = await supabase
       .from('stories')
-      .select('*, user:profiles(id, full_name, avatar_url)')
+      .select('*, user:profiles(id, full_name, avatar_url, username, bio, cover_url, location)')
       .order('created_at', { ascending: false });
 
     if (!error && data) {
@@ -28,8 +29,12 @@ const StoryBar: React.FC<StoryBarProps> = ({ currentUser }) => {
         ...s,
         user: {
           id: s.user.id,
-          username: s.user.full_name,
-          avatar: s.user.avatar_url
+          username: s.user.username || s.user.full_name,
+          full_name: s.user.full_name,
+          avatar: s.user.avatar_url,
+          bio: s.user.bio || 'AddaSangi Member',
+          coverUrl: s.user.cover_url || `https://picsum.photos/seed/cover-${s.user.id}/1200/400`,
+          location: s.user.location || 'Bangladesh'
         }
       }));
       setStories(formattedStories);
@@ -54,18 +59,18 @@ const StoryBar: React.FC<StoryBarProps> = ({ currentUser }) => {
         {stories.map((story, idx) => (
           <div 
             key={story.id} 
-            className="flex flex-col items-center gap-1 shrink-0 cursor-pointer"
+            className="flex flex-col items-center gap-1 shrink-0 cursor-pointer group"
             onClick={() => setSelectedStoryIndex(idx)}
           >
-            <div className="w-16 h-16 rounded-full p-0.5 border-2 border-red-500 overflow-hidden">
+            <div className="w-16 h-16 rounded-full p-0.5 border-2 border-red-500 overflow-hidden transition-transform group-hover:scale-105">
               <img 
                 src={story.user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${story.user_id}`} 
-                alt={story.user?.username} 
+                alt={story.user?.full_name} 
                 className="w-full h-full rounded-full object-cover"
               />
             </div>
             <span className="text-[10px] font-medium text-gray-600 truncate w-16 text-center">
-              {story.user?.username || 'User'}
+              {story.user?.full_name.split(' ')[0] || 'User'}
             </span>
           </div>
         ))}
@@ -92,6 +97,10 @@ const StoryBar: React.FC<StoryBarProps> = ({ currentUser }) => {
             stories={stories} 
             initialIndex={selectedStoryIndex} 
             onClose={() => setSelectedStoryIndex(null)} 
+            onViewProfile={(user) => {
+              setSelectedStoryIndex(null);
+              onViewProfile?.(user);
+            }}
           />
         )}
       </AnimatePresence>
@@ -337,7 +346,7 @@ const StoryCreator: React.FC<{ onClose: () => void, currentUser: User, onSuccess
 };
 
 // --- Story Viewer Component ---
-const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: () => void }> = ({ stories, initialIndex, onClose }) => {
+const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: () => void, onViewProfile: (user: User) => void }> = ({ stories, initialIndex, onClose, onViewProfile }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const story = stories[currentIndex];
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -421,10 +430,16 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
 
       {/* Top Bar */}
       <div className="absolute top-8 left-4 right-4 flex items-center justify-between z-40">
-        <div className="flex items-center gap-3">
+        <div 
+          className="flex items-center gap-3 cursor-pointer hover:bg-white/10 p-1 rounded-lg transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (story.user) onViewProfile(story.user as any);
+          }}
+        >
           <img src={story.user?.avatar} className="w-10 h-10 rounded-full border-2 border-white object-cover" />
           <div>
-            <p className="text-white font-bold text-sm leading-none">{story.user?.username}</p>
+            <p className="text-white font-bold text-sm leading-none">{story.user?.full_name}</p>
             <p className="text-white/60 text-[10px] mt-1">{new Date(story.created_at).toLocaleTimeString()}</p>
           </div>
         </div>
@@ -434,7 +449,7 @@ const StoryViewer: React.FC<{ stories: Story[], initialIndex: number, onClose: (
               <i className={`fa-solid ${isMuted ? 'fa-volume-xmark text-red-500' : 'fa-volume-high'}`}></i>
             </button>
           )}
-          <button onClick={onClose} className="text-white/80 hover:text-white transition-colors">
+          <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-white/80 hover:text-white transition-colors">
             <i className="fa-solid fa-xmark text-2xl"></i>
           </button>
         </div>

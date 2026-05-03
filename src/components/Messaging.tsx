@@ -891,8 +891,30 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         {activeChat ? (
           <>
             <header className="h-16 border-b flex items-center justify-between bg-[#b71c1c] px-4 shadow-sm z-10 text-white">
-              <div className="flex items-center gap-3">
-                <button onClick={() => setActiveChat(null)} className="md:hidden text-white p-2 -ml-2"><i className="fa-solid fa-arrow-left text-lg"></i></button>
+              <div 
+                className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => {
+                  const targetUser: User = {
+                    id: activeChat.id,
+                    username: activeChat.username,
+                    full_name: activeChat.full_name,
+                    avatar: activeChat.avatar,
+                    coverUrl: `https://picsum.photos/seed/cover-${activeChat.id}/1200/400`,
+                    bio: 'AddaSangi Member',
+                    location: 'Bangladesh'
+                  };
+                  onViewProfile?.(targetUser);
+                }}
+              >
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveChat(null);
+                  }} 
+                  className="md:hidden text-white p-2 -ml-2"
+                >
+                  <i className="fa-solid fa-arrow-left text-lg"></i>
+                </button>
                 <img src={activeChat.avatar} className="w-10 h-10 rounded-full object-cover border border-white/20 shadow-sm" alt="" />
                 <div>
                   <h3 className="font-bold text-white leading-tight text-sm">{activeChat.full_name}</h3>

@@ -13,9 +13,10 @@ interface FeedProps {
   onPostCreate: (caption: string) => void;
   onPostDelete: (id: string) => void;
   onProfileClick: () => void;
+  onViewProfile?: (user: User) => void;
 }
 
-const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLike, onRefresh, onPostCreate, onPostDelete, onProfileClick }) => {
+const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLike, onRefresh, onPostCreate, onPostDelete, onProfileClick, onViewProfile }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newPostText, setNewPostText] = useState('');
 
@@ -101,6 +102,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLik
                 currentUser={currentUser}
                 onLike={(reaction) => onLike(post.id, reaction)} 
                 onDelete={() => onPostDelete(post.id)}
+                onViewProfile={onViewProfile}
               />
             </div>
           ))
