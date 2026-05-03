@@ -42,7 +42,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLik
             onClick={() => setIsModalOpen(true)}
             className="flex-1 bg-gray-100 hover:bg-gray-200 transition-colors rounded-full text-left px-4 py-2 text-gray-500 text-sm md:text-base font-medium"
           >
-            What's on your mind, {currentUser.username.split(' ')[0]}?
+            What's on your mind, {currentUser.full_name.split(' ')[0]}?
           </button>
         </div>
         <div className="border-t border-gray-100 pt-3 flex justify-between">
@@ -135,7 +135,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLik
               <div className="flex items-center gap-3 mb-4">
                 <img src={currentUser.avatar} className="w-10 h-10 rounded-full" alt="" />
                 <div>
-                  <h4 className="font-bold text-sm text-gray-900">{currentUser.username}</h4>
+                  <h4 className="font-bold text-sm text-gray-900">{currentUser.full_name}</h4>
                   <div className="bg-gray-100 px-2 py-0.5 rounded flex items-center gap-1 text-[10px] font-bold text-gray-600 w-fit">
                     <i className="fa-solid fa-users"></i> Friends <i className="fa-solid fa-caret-down"></i>
                   </div>
@@ -143,7 +143,7 @@ const Feed: React.FC<FeedProps> = ({ posts, stories, loading, currentUser, onLik
               </div>
 
               <textarea
-                placeholder={`What's on your mind, ${currentUser.username.split(' ')[0]}?`}
+                placeholder={`What's on your mind, ${currentUser.full_name.split(' ')[0]}?`}
                 className="w-full min-h-[150px] resize-none border-none outline-none text-xl placeholder-gray-400 font-medium"
                 value={newPostText}
                 onChange={(e) => setNewPostText(e.target.value)}

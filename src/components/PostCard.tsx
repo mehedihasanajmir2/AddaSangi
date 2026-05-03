@@ -28,8 +28,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onLike, onDelete
         <div className="flex items-center gap-3">
           <img src={post.user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
           <div>
-            <h4 className="font-bold text-sm text-gray-900">{post.user.username}</h4>
-            <span className="text-[10px] text-gray-500">{post.timestamp}</span>
+            <h4 className="font-bold text-sm text-gray-900">{post.user.full_name}</h4>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-green-600">@{post.user.username}</span>
+              <span className="text-[10px] text-gray-400">•</span>
+              <span className="text-[10px] text-gray-500">{post.timestamp}</span>
+            </div>
           </div>
         </div>
         {post.user.id === currentUser.id && (
@@ -89,7 +93,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onLike, onDelete
         <div className="px-4 py-3 bg-gray-50/50 border-t border-gray-50">
           {post.comments.map(comment => (
             <div key={comment.id} className="flex gap-2 mb-2">
-              <span className="font-bold text-xs text-gray-900">{comment.username}</span>
+              <span className="font-bold text-xs text-gray-900">{comment.full_name}</span>
               <span className="text-xs text-gray-700">{comment.text}</span>
             </div>
           ))}

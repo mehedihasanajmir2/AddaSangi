@@ -128,19 +128,20 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
         if (uids.length > 0) {
           const { data: profiles } = await supabase.from('profiles').select('*').in('id', uids);
           
-          const formattedInbox = uids.map(uid => {
-            const profile = profiles?.find(p => String(p.id) === uid);
-            const meta = contactMap.get(uid);
-            return {
-              id: uid,
-              username: profile?.full_name || 'User',
-              avatar: profile?.avatar_url || `https://picsum.photos/seed/${uid}/200`,
-              lastMessage: meta.lastMessage,
-              lastMessageTime: meta.lastMessageTime,
-              isMe: meta.isMe,
-              isSeen: meta.isSeen
-            };
-          }).sort((a, b) => new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime());
+              const formattedInbox = uids.map(uid => {
+                const profile = profiles?.find(p => String(p.id) === uid);
+                const meta = contactMap.get(uid);
+                return {
+                  id: uid,
+                  username: profile?.username || 'user',
+                  full_name: profile?.full_name || 'User',
+                  avatar: profile?.avatar_url || `https://picsum.photos/seed/${uid}/200`,
+                  lastMessage: meta.lastMessage,
+                  lastMessageTime: meta.lastMessageTime,
+                  isMe: meta.isMe,
+                  isSeen: meta.isSeen
+                };
+              }).sort((a, b) => new Date(b.lastMessageTime!).getTime() - new Date(a.lastMessageTime!).getTime());
           
           setInboxUsers(formattedInbox);
         } else {
@@ -859,13 +860,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                  <div className="text-left flex-1 min-w-0">
                     <div className="flex justify-between items-baseline">
                       <div className="flex items-center gap-1 min-w-0">
-                        <h4 className="font-bold text-gray-900 truncate text-sm">{user.username}</h4>
-                        {myBlockedIds.includes(String(user.id).toLowerCase()) && (
-                          <span className="bg-red-50 text-red-600 text-[8px] px-1 rounded border border-red-100 uppercase font-black shrink-0">Blocked</span>
-                        )}
-                        {blockedMeIds.includes(String(user.id).toLowerCase()) && (
-                          <span className="bg-gray-100 text-gray-600 text-[8px] px-1 rounded border border-gray-200 uppercase font-black shrink-0">Restricted</span>
-                        )}
+                        <h4 className="font-bold text-gray-900 truncate text-sm">{user.full_name}</h4>
+                        <span className="text-[10px] text-green-600 font-bold shrink-0">@{user.username}</span>
                       </div>
                       <span className="text-[10px] text-gray-400 font-medium">
                         {user.lastMessageTime ? new Date(user.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -900,8 +896,8 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                 <button onClick={() => setActiveChat(null)} className="md:hidden text-white p-2 -ml-2"><i className="fa-solid fa-arrow-left text-lg"></i></button>
                 <img src={activeChat.avatar} className="w-10 h-10 rounded-full object-cover border border-white/20 shadow-sm" alt="" />
                 <div>
-                  <h3 className="font-bold text-white leading-tight text-sm">{activeChat.username}</h3>
-                  <p className="text-[10px] text-white/70 font-medium">online</p>
+                  <h3 className="font-bold text-white leading-tight text-sm">{activeChat.full_name}</h3>
+                  <p className="text-[10px] text-white/70 font-medium font-mono tracking-tighter">@{activeChat.username}</p>
                 </div>
               </div>
               <div className="flex items-center gap-4 relative">
@@ -970,7 +966,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                           ))}
                         </div>
                       )}
-                      {!isMe && !isSameSender && <span className="block text-[10px] font-bold text-red-600 mb-0.5">{activeChat.username}</span>}
+                      {!isMe && !isSameSender && <span className="block text-[10px] font-bold text-red-600 mb-0.5">{activeChat.full_name}</span>}
                       <div className="flex justify-between items-start gap-2">
                         <div className="leading-relaxed flex-1">
                           {isRemoved ? (

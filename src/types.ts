@@ -16,7 +16,8 @@ export interface Story {
 
 export interface User {
   id: string;
-  username: string;
+  username: string; // This is the unique User ID/Handle
+  full_name: string; // This is the display name
   avatar: string;
   coverUrl?: string;
   bio?: string;
@@ -26,9 +27,6 @@ export interface User {
   email?: string;
   location?: string;
   lastNameChangeDate?: string;
-  // Added full_name to match Supabase schema and fix Profile update type error
-  full_name?: string;
-  // Adding these to match Supabase schema expectations in Profile update
   avatar_url?: string;
   cover_url?: string;
 }
@@ -50,7 +48,8 @@ export interface Post {
 export interface Comment {
   id: string;
   user_id: string;
-  username: string;
+  username: string; // unique handle
+  full_name: string; // display name
   text: string;
   timestamp: string;
 }

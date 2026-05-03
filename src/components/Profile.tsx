@@ -54,12 +54,21 @@ const Profile: React.FC<ProfileProps> = ({ user, posts, isOwnProfile, currentUse
           {isEditing ? (
             <div className="space-y-4 p-2 animate-in fade-in slide-in-from-top-4 duration-300">
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase">Username</label>
+                <label className="text-xs font-bold text-gray-500 uppercase">Full Name</label>
+                <input 
+                  type="text" 
+                  value={editedUser.full_name} 
+                  onChange={e => setEditedUser({...editedUser, full_name: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#1b5e20]"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase opacity-50">Username (Unique - Cannot be changed)</label>
                 <input 
                   type="text" 
                   value={editedUser.username} 
-                  onChange={e => setEditedUser({...editedUser, username: e.target.value})}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#1b5e20]"
+                  disabled
+                  className="w-full p-3 bg-gray-100 border border-gray-100 rounded-lg outline-none text-gray-400 cursor-not-allowed"
                 />
               </div>
               <div>
@@ -79,7 +88,8 @@ const Profile: React.FC<ProfileProps> = ({ user, posts, isOwnProfile, currentUse
             </div>
           ) : (
             <div className="px-2">
-              <h1 className="text-2xl md:text-3xl font-black text-gray-900">{user.username}</h1>
+              <h1 className="text-2xl md:text-3xl font-black text-gray-900">{user.full_name}</h1>
+              <span className="text-sm font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">@{user.username}</span>
               {user.bio && <p className="text-gray-600 mt-2 whitespace-pre-wrap">{user.bio}</p>}
               
               <div className="flex gap-4 mt-4 border-t border-gray-100 pt-4">

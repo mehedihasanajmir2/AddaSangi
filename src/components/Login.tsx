@@ -86,6 +86,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     // Password validation for Sign Up
     if (isSignUp) {
+      // Age validation (Minimum 15 years)
+      if (year && month && day) {
+        const birthDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+
+        if (age < 15) {
+          setError('You must be at least 15 years old to create an account.');
+          setLoading(false);
+          return;
+        }
+      }
+
       if (password.length < 6) {
         setError('Password must be at least 6 characters long');
         setLoading(false);
@@ -107,7 +124,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         const dobArr = [year, month.padStart(2, '0'), day.padStart(2, '0')];
         const dob = dobArr.join('-');
         
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -121,7 +138,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             }
           }
         });
+
         if (error) throw error;
+
+        // Check if user was actually created or already exists
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          setError('Already account created. Please login.');
+          setLoading(false);
+          return;
+        }
         
         // Success: Show verification screen
         setIsVerifyingEmail(true);

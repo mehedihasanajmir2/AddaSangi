@@ -12,6 +12,7 @@ import TopNav from './components/TopNav';
 import SearchResults from './components/SearchResults';
 import Messaging from './components/Messaging';
 import CallingOverlay from './components/CallingOverlay';
+import SetUsername from './components/SetUsername';
 import { supabase } from './services/supabaseClient';
 
 const LOGO_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjbaxCAakhVQOly5IhXfPkpbunmcsxREDf2xali0fkLp9gK5qNdh2KL-UhEmDICRaX6_HtDBQTKM6jgtCJuTzrjpKUynSLe6NCzCvRpCs8C6dBgy2wGzEmcV-EIdxh5r73ExANoAyfIufc5JdfXfY1Xal6BSK0fdnqwK0VCkOZTfEdb_GMAiBB-aB9wedf0/s1600/Gemini_Generated_Image_pnxgvipnxgvipnxg.png";
@@ -55,7 +56,8 @@ const App: React.FC = () => {
       // Set a temporary user profile quickly to avoid white screen while waiting for DB
       const fallbackUser: User = {
         id: userAuth.id,
-        username: userAuth.user_metadata?.full_name || userAuth.email?.split('@')[0] || 'User',
+        username: userAuth.user_metadata?.username || '', // Explicitly empty if not set
+        full_name: userAuth.user_metadata?.full_name || 'User',
         avatar: userAuth.user_metadata?.avatar_url || `https://picsum.photos/seed/${userAuth.id}/200`,
         email: userAuth.email,
         location: 'Bangladesh'
@@ -67,7 +69,8 @@ const App: React.FC = () => {
       if (profile) {
         setCurrentUser({
           id: profile.id,
-          username: profile.full_name || fallbackUser.username,
+          username: profile.username || '', 
+          full_name: profile.full_name || fallbackUser.full_name,
           avatar: profile.avatar_url || fallbackUser.avatar,
           coverUrl: profile.cover_url || `https://picsum.photos/seed/cover-${profile.id}/1200/400`,
           bio: profile.bio,
@@ -170,13 +173,14 @@ const App: React.FC = () => {
         const { data: profiles } = await supabase
           .from('profiles')
           .select('*')
-          .ilike('full_name', `%${searchQuery}%`)
+          .or(`full_name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
           .limit(20);
         
         if (profiles) {
           setSearchResults(profiles.map((p: any) => ({
             id: p.id,
-            username: p.full_name || 'AddaSangi User',
+            username: p.username || 'user',
+            full_name: p.full_name || 'AddaSangi User',
             avatar: p.avatar_url || `https://picsum.photos/seed/${p.id}/200`,
             coverUrl: p.cover_url || `https://picsum.photos/seed/cover-${p.id}/1200/400`,
             bio: p.bio,
@@ -255,6 +259,18 @@ const App: React.FC = () => {
         <img src={LOGO_URL} className="w-20 h-20 animate-bounce mb-4" alt="" />
         <p className="text-[#1b5e20] font-black animate-pulse text-lg">প্রোফাইল লোড হচ্ছে...</p>
       </div>
+    );
+  }
+
+  // FORCE USERNAME SELECTION
+  if (!currentUser.username) {
+    return (
+      <SetUsername 
+        user={currentUser} 
+        onComplete={(newUsername) => {
+          setCurrentUser(prev => prev ? { ...prev, username: newUsername } : null);
+        }} 
+      />
     );
   }
 
