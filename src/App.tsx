@@ -1,18 +1,18 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppTab, Post, User, Story, ReactionType } from './types';
-import Feed from './components/Feed';
-import Profile from './components/Profile';
-import Login from './components/Login';
-import Sidebar from './components/Sidebar';
-import ContactsSidebar from './components/ContactsSidebar';
-import Menu from './components/Menu';
-import StoryBar from './components/StoryBar';
-import TopNav from './components/TopNav';
-import SearchResults from './components/SearchResults';
-import Messaging from './components/Messaging';
-import CallingOverlay from './components/CallingOverlay';
-import { supabase } from './services/supabaseClient';
+import { AppTab, Post, User, Story, ReactionType } from '@/types';
+import Feed from '@/components/Feed';
+import Profile from '@/components/Profile';
+import Login from '@/components/Login';
+import Sidebar from '@/components/Sidebar';
+import ContactsSidebar from '@/components/ContactsSidebar';
+import Menu from '@/components/Menu';
+import StoryBar from '@/components/StoryBar';
+import TopNav from '@/components/TopNav';
+import SearchResults from '@/components/SearchResults';
+import Messaging from '@/components/Messaging';
+import CallingOverlay from '@/components/CallingOverlay';
+import { supabase } from '@/services/supabaseClient';
 
 const LOGO_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjbaxCAakhVQOly5IhXfPkpbunmcsxREDf2xali0fkLp9gK5qNdh2KL-UhEmDICRaX6_HtDBQTKM6jgtCJuTzrjpKUynSLe6NCzCvRpCs8C6dBgy2wGzEmcV-EIdxh5r73ExANoAyfIufc5JdfXfY1Xal6BSK0fdnqwK0VCkOZTfEdb_GMAiBB-aB9wedf0/s1600/Gemini_Generated_Image_pnxgvipnxgvipnxg.png";
 const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"; 
