@@ -314,7 +314,18 @@ const App: React.FC = () => {
     <div className="h-screen bg-[#e8f5e9] flex flex-col font-sans overflow-hidden">
       {/* WhatsApp Style Header (Global) */}
       <header className="h-16 bg-[#b71c1c] text-white flex items-center justify-between px-4 shadow-lg z-50 shrink-0">
-        <h1 className="text-xl font-bold tracking-tight">AddaSangi</h1>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => {
+              setProfileUser(null);
+              setActiveTab(AppTab.PROFILE);
+            }}
+            className="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden md:hidden"
+          >
+            <img src={currentUser.avatar} className="w-full h-full object-cover" alt="me" />
+          </button>
+          <h1 className="text-xl font-bold tracking-tight cursor-pointer" onClick={() => setActiveTab(AppTab.FEED)}>AddaSangi</h1>
+        </div>
         <div className="flex items-center gap-5">
           <button onClick={() => setActiveTab(AppTab.SEARCH)} className="text-xl text-white/70 hover:text-white"><i className="fa-solid fa-magnifying-glass"></i></button>
           <button onClick={() => setActiveTab(AppTab.MENU)} className="text-xl text-white/70 hover:text-white md:hidden"><i className="fa-solid fa-ellipsis-vertical"></i></button>

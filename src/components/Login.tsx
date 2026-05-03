@@ -237,7 +237,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               {resendLoading ? 'Sending...' : resendTimer > 0 ? `Resend Email (${resendTimer}s)` : 'Resend Verification Email'}
             </button>
             {resendMessage && <p className="text-green-600 text-[10px] font-bold animate-pulse">{resendMessage}</p>}
-            {error && isVerifyingEmail && <p className="text-red-500 text-[10px] font-bold">{error}</p>}
+            {error && isVerifyingEmail && (
+              <div className="p-2 bg-red-50 rounded-lg">
+                 <p className="text-red-500 text-[10px] font-bold">{error}</p>
+                 {error.includes('rate limit') && (
+                   <p className="text-gray-500 text-[9px] mt-1 italic">Note: Email rate limit exceeded hole apnake 1 hour wait korte hobe.</p>
+                 )}
+              </div>
+            )}
           </div>
 
           <p className="mt-6 text-xs text-gray-400">

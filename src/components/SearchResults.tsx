@@ -57,15 +57,23 @@ const SearchResults: React.FC<SearchResultsProps> = ({ results, query, onQueryCh
                   <p className="text-[10px] text-gray-400 truncate max-w-[150px]">{user.bio || 'AddaSangi Member'}</p>
                 </div>
               </div>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUserSelect(user);
-                }}
-                className="bg-[#1b5e20] text-white px-4 py-2 rounded-xl text-xs font-black shadow-sm active:scale-95 transition-all"
-              >
-                MESSAGE
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => onViewProfile?.(user)}
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-xs font-black shadow-sm active:scale-95 transition-all"
+                >
+                  PROFILE
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUserSelect(user);
+                  }}
+                  className="bg-[#1b5e20] text-white px-4 py-2 rounded-xl text-xs font-black shadow-sm active:scale-95 transition-all"
+                >
+                  MESSAGE
+                </button>
+              </div>
             </div>
           ))}
         </div>

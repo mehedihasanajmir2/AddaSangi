@@ -677,9 +677,9 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
       if (error) {
         if (error.message.includes('bucket_not_found') || error.message.includes('bucket not found')) {
-          alert("Error: Supabase Storage folder 'messages' খুঁজে পাওয়া যায়নি। দয়া করে আপনার Supabase Dashboard-এ গিয়ে 'Storage' সেকশনে 'messages' নামে একটি Public Bucket তৈরি করুন।");
+          alert("Error: 'messages' নামের Supabase Storage Bucket খুঁজে পাওয়া যায়নি।\n\nসমাধান:\n১. আপনার Supabase Dashboard-এ যান।\n২. 'Storage' সেকশনে যান।\n৩. 'NEW BUCKET' বাটনে ক্লিক করে 'messages' নামে একটি bucket তৈরি করুন।\n৪. অবশ্যই bucket-টি 'Public' করুন।");
         } else {
-          alert("File upload error: " + error.message);
+          alert("Voice upload error: " + error.message);
         }
         return;
       }
@@ -721,7 +721,7 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
 
       if (error) {
         if (error.message.includes('bucket_not_found') || error.message.includes('bucket not found')) {
-          alert("Error: Supabase Storage folder 'messages' খুঁজে পাওয়া যায়নি। আড্ডাসঙ্গীর ফটো শেয়ারিং সচল করতে Supabase Dashboard-এ 'Storage' সেকশনে 'messages' নামে একটি Public Bucket তৈরি করুন।");
+          alert("Error: 'messages' নামের Supabase Storage Bucket খুঁজে পাওয়া যায়নি। আড্ডাসঙ্গীর ফটো শেয়ারিং সচল করতে Supabase Dashboard-এ 'Storage' সেকশনে 'messages' নামে একটি Public Bucket তৈরি করুন।");
         } else {
           alert("Upload failed: " + error.message);
         }
@@ -915,18 +915,16 @@ const Messaging: React.FC<MessagingProps> = ({ currentUser, targetUser, onStartC
                   onViewProfile?.(targetUser);
                 }}
               >
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveChat(null);
-                  }} 
-                  className="md:hidden text-white p-2 -ml-2"
-                >
+                <div className="md:hidden text-white p-2 -ml-2" onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveChat(null);
+                }}>
                   <i className="fa-solid fa-arrow-left text-lg"></i>
-                </button>
+                </div>
                 <img src={activeChat.avatar} className="w-10 h-10 rounded-full object-cover border border-white/20 shadow-sm" alt="" />
                 <div>
                   <h3 className="font-bold text-white leading-tight text-sm">{activeChat.full_name}</h3>
+                  <p className="text-[10px] text-white/70">View Profile</p>
                 </div>
               </div>
               <div className="flex items-center gap-4 relative">
