@@ -69,7 +69,7 @@ const SetUsername: React.FC<SetUsernameProps> = ({ user, onComplete }) => {
         <h1 className="text-3xl font-black mb-2 text-center">
           <span className="text-red-600">Adda</span><span className="text-green-600">Sangi</span>
         </h1>
-        <p className="text-gray-500 text-sm mb-8 text-center font-medium px-4">Set your unique ID. Keu apnake search dile ei ID diye khuje pabe.</p>
+        <p className="text-gray-500 text-sm mb-8 text-center font-medium px-4">Choose a unique username to continue.</p>
         
         <form onSubmit={handleSubmit} className="w-full">
           <div className="relative mb-6">
@@ -93,7 +93,7 @@ const SetUsername: React.FC<SetUsernameProps> = ({ user, onComplete }) => {
             </div>
           </div>
 
-          {isAvailable === false && <p className="text-red-500 text-xs mb-4 ml-2 font-bold animate-pulse">Already used! Ar ekta pick korun.</p>}
+          {isAvailable === false && <p className="text-red-500 text-xs mb-4 ml-2 font-bold animate-pulse">This username is already taken!</p>}
           {error && <p className="text-red-500 text-xs mb-4 ml-2">{error}</p>}
           
           <button 
